@@ -129,7 +129,7 @@ const ProjectsScreen: React.FC = () => {
                       mode="outlined"
                       onPress={() => navigateToCreateReport(project.id)}
                       style={styles.actionButton}
-                      icon="document-text"
+                      icon="document"
                     >
                       Novo Relatório
                     </Button>

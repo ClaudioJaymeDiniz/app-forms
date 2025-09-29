@@ -231,6 +231,40 @@ const ReportDetailScreen: React.FC = () => {
         </Card.Content>
       </Card>
 
+      {/* Ações */}
+      {state.user && (
+        <Card style={styles.card}>
+          <Card.Content>
+            <Title>Ações</Title>
+            
+            {/* Botão para preencher relatório */}
+            {(report.permissions.canFill.includes('*') || 
+              report.permissions.canFill.includes(state.user.email)) && (
+              <Button
+                mode="contained"
+                onPress={() => navigation.navigate('FillReport', { reportId: report.id })}
+                style={styles.actionButton}
+                icon="edit"
+              >
+                Preencher Relatório
+              </Button>
+            )}
+
+            {/* Botão para ver respostas (apenas para o criador) */}
+            {state.user.id === report.createdBy && (
+              <Button
+                mode="outlined"
+                onPress={() => navigation.navigate('ReportResponses', { reportId: report.id })}
+                style={styles.actionButton}
+                icon="eye"
+              >
+                Ver Respostas
+              </Button>
+            )}
+          </Card.Content>
+        </Card>
+      )}
+
       {/* Permissões */}
       <Card style={styles.card}>
         <Card.Content>
@@ -365,10 +399,12 @@ const styles = StyleSheet.create({
   },
   requiredChip: {
     backgroundColor: '#F44336',
-    alignSelf: 'center',
+  },
+  actionButton: {
+    marginBottom: 8,
   },
   bottomSpacing: {
-    height: 20,
+    height: 100,
   },
 });
 

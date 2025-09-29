@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { 
   Text, 
   TextInput, 
   Button, 
-  Card,
+  Card, 
+  Title,
   ActivityIndicator
 } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
@@ -71,7 +72,7 @@ const CreateProjectScreen: React.FC = () => {
     <ScrollView style={styles.container}>
       <Card style={styles.card}>
         <Card.Content>
-          <Text style={styles.title}>Novo Projeto</Text>
+          <Title style={styles.title}>Novo Projeto</Title>
           <Text style={styles.subtitle}>
             Crie um novo projeto para organizar seus relatórios
           </Text>
@@ -99,35 +100,21 @@ const CreateProjectScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>Personalização</Text>
           
           <TextInput
-            label="Cor primária"
+            label="Cor primária (hex)"
             value={primaryColor}
             onChangeText={setPrimaryColor}
             mode="outlined"
             style={styles.input}
             placeholder="#2196F3"
-            left={
-              <TextInput.Icon 
-                icon={() => (
-                  <View style={[styles.colorPreview, { backgroundColor: primaryColor }]} />
-                )}
-              />
-            }
           />
-
+          
           <TextInput
-            label="Cor secundária"
+            label="Cor secundária (hex)"
             value={secondaryColor}
             onChangeText={setSecondaryColor}
             mode="outlined"
             style={styles.input}
             placeholder="#FFC107"
-            left={
-              <TextInput.Icon 
-                icon={() => (
-                  <View style={[styles.colorPreview, { backgroundColor: secondaryColor }]} />
-                )}
-              />
-            }
           />
 
           <View style={styles.buttonContainer}>
@@ -184,13 +171,6 @@ const styles = StyleSheet.create({
     color: '#333',
     marginTop: 16,
     marginBottom: 16,
-  },
-  colorPreview: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
   },
   buttonContainer: {
     flexDirection: 'row',

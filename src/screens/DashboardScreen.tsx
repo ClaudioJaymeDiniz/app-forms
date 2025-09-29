@@ -1,47 +1,57 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
-import { 
-  Text, 
-  Card,  
-  Button, 
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  TouchableOpacity,
+} from "react-native";
+import {
+  Text,
+  Card,
+  Button,
   Chip,
   Surface,
   ActivityIndicator,
-  FAB
-} from 'react-native-paper';
-import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
+  FAB,
+} from "react-native-paper";
+import { Ionicons } from "@expo/vector-icons";
+import Entypo from "@expo/vector-icons/Entypo";
+import { useNavigation } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
 
-import { useAuth } from '../contexts/AuthContext';
-import { databaseService } from '../database/database';
-import { syncService } from '../services/syncService';
-import { RootStackParamList } from '../navigation/AppNavigator';
-import { Project, Report, ReportSubmission, DashboardStats } from '../types';
+import { useAuth } from "../contexts/AuthContext";
+import { databaseService } from "../database/database";
+import { syncService } from "../services/syncService";
+import { RootStackParamList } from "../navigation/AppNavigator";
+import { Project, Report, ReportSubmission, DashboardStats } from "../types";
 
 type DashboardScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const DashboardScreen: React.FC = () => {
   const navigation = useNavigation<DashboardScreenNavigationProp>();
-  const { state } = useAuth();
-  
+  const authContext = useAuth();
+  const { state } = authContext;
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [recentReports, setRecentReports] = useState<Report[]>([]);
-  const [recentSubmissions, setRecentSubmissions] = useState<ReportSubmission[]>([]);
+  const [recentSubmissions, setRecentSubmissions] = useState<
+    ReportSubmission[]
+  >([]);
   const [stats, setStats] = useState<DashboardStats>({
     totalReports: 0,
     pendingReports: 0,
     completedReports: 0,
     overdueReports: 0,
-    recentActivity: []
+    recentActivity: [],
   });
   const [isOnline, setIsOnline] = useState(syncService.isConnected());
 
   useEffect(() => {
     loadDashboardData();
-    
+
     // Verifica status de conectividade periodicamente
     const interval = setInterval(() => {
       setIsOnline(syncService.isConnected());
@@ -52,33 +62,47 @@ const DashboardScreen: React.FC = () => {
 
   const loadDashboardData = async () => {
     try {
-      if (!state.user) return;
+      if (!state || !state.user) {
+        console.warn("User state not available");
+        return;
+      }
 
       // Carrega projetos do usuário
-      const userProjects = await databaseService.getProjectsByUserId(state.user.id);
+      const userProjects = await databaseService.getProjectsByUserId(
+        state.user.id
+      );
       setProjects(userProjects);
 
       // Carrega relatórios recentes
       const allReports: Report[] = [];
       for (const project of userProjects) {
-        const projectReports = await databaseService.getReportsByProjectId(project.id);
+        const projectReports = await databaseService.getReportsByProjectId(
+          project.id
+        );
         allReports.push(...projectReports);
       }
-      
+
       // Ordena por data de criação (mais recentes primeiro)
-      const sortedReports = allReports.sort((a, b) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      const sortedReports = allReports.sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       setRecentReports(sortedReports.slice(0, 5));
 
       // Carrega submissões do usuário
-      const userSubmissions = await databaseService.getSubmissionsByUserId(state.user.id);
+      const userSubmissions = await databaseService.getSubmissionsByUserId(
+        state.user.id
+      );
       setRecentSubmissions(userSubmissions.slice(0, 5));
 
       // Calcula estatísticas
       const totalReports = allReports.length;
-      const pendingReports = userSubmissions.filter(s => s.status === 'draft').length;
-      const completedReports = userSubmissions.filter(s => s.status === 'submitted').length;
+      const pendingReports = userSubmissions.filter(
+        (s) => s.status === "draft"
+      ).length;
+      const completedReports = userSubmissions.filter(
+        (s) => s.status === "submitted"
+      ).length;
       const overdueReports = 0; // TODO: implementar lógica de prazo
 
       setStats({
@@ -86,11 +110,10 @@ const DashboardScreen: React.FC = () => {
         pendingReports,
         completedReports,
         overdueReports,
-        recentActivity: [] // TODO: implementar atividade recente
+        recentActivity: [], // TODO: implementar atividade recente
       });
-
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error("Error loading dashboard data:", error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -103,34 +126,48 @@ const DashboardScreen: React.FC = () => {
   };
 
   const navigateToCreateProject = () => {
-    navigation.navigate('CreateProject');
+    navigation.navigate("CreateProject");
   };
 
   const navigateToCreateReport = () => {
-    navigation.navigate('CreateReport', {});
+    navigation.navigate("CreateReport", {});
   };
 
   const navigateToReportDetail = (reportId: string) => {
-    navigation.navigate('ReportDetail', { reportId });
+    navigation.navigate("ReportDetail", { reportId });
+  };
+
+  const navigateToReportResponses = (reportId: string) => {
+    navigation.navigate("ReportResponses", { reportId });
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'draft': return '#FF9800';
-      case 'submitted': return '#4CAF50';
-      case 'approved': return '#2196F3';
-      case 'rejected': return '#F44336';
-      default: return '#9E9E9E';
+      case "draft":
+        return "#FF9800";
+      case "submitted":
+        return "#4CAF50";
+      case "approved":
+        return "#2196F3";
+      case "rejected":
+        return "#F44336";
+      default:
+        return "#9E9E9E";
     }
   };
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'draft': return 'Rascunho';
-      case 'submitted': return 'Enviado';
-      case 'approved': return 'Aprovado';
-      case 'rejected': return 'Rejeitado';
-      default: return 'Desconhecido';
+      case "draft":
+        return "Rascunho";
+      case "submitted":
+        return "Enviado";
+      case "approved":
+        return "Aprovado";
+      case "rejected":
+        return "Rejeitado";
+      default:
+        return "Desconhecido";
     }
   };
 
@@ -145,7 +182,7 @@ const DashboardScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -154,40 +191,63 @@ const DashboardScreen: React.FC = () => {
         {/* Header com saudação */}
         <View style={styles.header}>
           <Text style={styles.greeting}>
-            Olá, {state.user?.name || 'Usuário'}!
+            Olá, {state.user?.name || "Usuário"}!
           </Text>
           <View style={styles.statusContainer}>
-            <Chip 
-              icon={isOnline ? "wifi" : "wifi-off"} 
-              style={[styles.statusChip, { backgroundColor: isOnline ? '#4CAF50' : '#F44336' }]}
-              textStyle={{ color: '#fff' }}
+            <Chip
+              icon={isOnline ? "wifi" : "wifi-off"}
+              style={[
+                styles.statusChip,
+                { backgroundColor: isOnline ? "#4CAF50" : "#F44336" },
+              ]}
+              textStyle={{ color: "#fff" }}
             >
-              {isOnline ? 'Online' : 'Offline'}
+              {isOnline ? "Online" : "Offline"}
             </Chip>
           </View>
         </View>
 
         {/* Estatísticas */}
         <View style={styles.statsContainer}>
-          <Surface style={styles.statCard}>
-            <Text style={styles.statNumber}>{stats.totalReports}</Text>
-            <Text style={styles.statLabel}>Total de Relatórios</Text>
-          </Surface>
-          
-          <Surface style={styles.statCard}>
-            <Text style={styles.statNumber}>{stats.pendingReports}</Text>
-            <Text style={styles.statLabel}>Pendentes</Text>
-          </Surface>
-          
-          <Surface style={styles.statCard}>
-            <Text style={styles.statNumber}>{stats.completedReports}</Text>
-            <Text style={styles.statLabel}>Concluídos</Text>
-          </Surface>
-          
-          <Surface style={styles.statCard}>
-            <Text style={styles.statNumber}>{projects.length}</Text>
-            <Text style={styles.statLabel}>Projetos</Text>
-          </Surface>
+          <TouchableOpacity
+            style={styles.statCard}
+            onPress={() => navigation.navigate("Reports")}
+          >
+            <Surface style={styles.statCardSurface}>
+              <Text style={styles.statNumber}>{stats.totalReports}</Text>
+              <Text style={styles.statLabel}>Total de Relatórios</Text>
+            </Surface>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.statCard}
+            onPress={() => navigation.navigate("Reports")}
+          >
+            <Surface style={styles.statCardSurface}>
+              <Text style={styles.statNumber}>{stats.pendingReports}</Text>
+              <Text style={styles.statLabel}>Pendentes</Text>
+            </Surface>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.statCard}
+            onPress={() => navigation.navigate("Reports")}
+          >
+            <Surface style={styles.statCardSurface}>
+              <Text style={styles.statNumber}>{stats.completedReports}</Text>
+              <Text style={styles.statLabel}>Concluídos</Text>
+            </Surface>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.statCard}
+            onPress={() => navigation.navigate("Projects")}
+          >
+            <Surface style={styles.statCardSurface}>
+              <Text style={styles.statNumber}>{projects.length}</Text>
+              <Text style={styles.statLabel}>Projetos</Text>
+            </Surface>
+          </TouchableOpacity>
         </View>
 
         {/* Ações rápidas */}
@@ -207,8 +267,9 @@ const DashboardScreen: React.FC = () => {
                 mode="outlined"
                 onPress={navigateToCreateReport}
                 style={styles.actionButton}
-                icon="document-text"
+                // icon="text-document"
               >
+                <Entypo name="text-document" />
                 Novo Relatório
               </Button>
             </View>
@@ -228,23 +289,37 @@ const DashboardScreen: React.FC = () => {
                 <Surface key={report.id} style={styles.reportItem}>
                   <View style={styles.reportHeader}>
                     <Text style={styles.reportTitle}>{report.title}</Text>
-                    <Chip 
+                    <Chip
                       style={{ backgroundColor: getStatusColor(report.status) }}
-                      textStyle={{ color: '#fff' }}
+                      textStyle={{ color: "#fff" }}
                     >
                       {getStatusText(report.status)}
                     </Chip>
                   </View>
                   <Text style={styles.reportDescription} numberOfLines={2}>
-                    {report.description || 'Sem descrição'}
+                    {report.description || "Sem descrição"}
                   </Text>
-                  <Button
-                    mode="text"
-                    onPress={() => navigateToReportDetail(report.id)}
-                    compact
-                  >
-                    Ver detalhes
-                  </Button>
+                  <View style={styles.reportActions}>
+                    <Button
+                      mode="text"
+                      onPress={() => navigateToReportDetail(report.id)}
+                      compact
+                    >
+                      Ver detalhes
+                    </Button>
+                    {state &&
+                      state.user &&
+                      state.user.id === report.createdBy && (
+                        <Button
+                          mode="text"
+                          onPress={() => navigateToReportResponses(report.id)}
+                          compact
+                          icon="eye"
+                        >
+                          Ver respostas
+                        </Button>
+                      )}
+                  </View>
                 </Surface>
               ))
             )}
@@ -259,19 +334,24 @@ const DashboardScreen: React.FC = () => {
               {recentSubmissions.map((submission) => (
                 <Surface key={submission.id} style={styles.submissionItem}>
                   <View style={styles.submissionHeader}>
-                    <Ionicons name="document-text" size={20} color="#2196F3" />
+                    <Ionicons name="document" size={20} color="#2196F3" />
                     <Text style={styles.submissionTitle}>
                       Relatório #{submission.reportId.slice(-6)}
                     </Text>
-                    <Chip 
-                      style={{ backgroundColor: getStatusColor(submission.status) }}
-                      textStyle={{ color: '#fff' }}
+                    <Chip
+                      style={{
+                        backgroundColor: getStatusColor(submission.status),
+                      }}
+                      textStyle={{ color: "#fff" }}
                     >
                       {getStatusText(submission.status)}
                     </Chip>
                   </View>
                   <Text style={styles.submissionDate}>
-                    Última modificação: {new Date(submission.lastModified).toLocaleDateString('pt-BR')}
+                    Última modificação:{" "}
+                    {new Date(submission.lastModified).toLocaleDateString(
+                      "pt-BR"
+                    )}
                   </Text>
                 </Surface>
               ))}
@@ -295,62 +375,65 @@ const DashboardScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
   },
   scrollView: {
     flex: 1,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f5f5f5",
   },
   loadingText: {
     marginTop: 16,
-    color: '#666',
+    color: "#666",
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 20,
     paddingBottom: 10,
   },
   greeting: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
   },
   statusContainer: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
   },
   statusChip: {
     elevation: 2,
   },
   statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     marginBottom: 20,
   },
   statCard: {
     flex: 1,
-    padding: 16,
     marginHorizontal: 4,
+  },
+  statCardSurface: {
+    padding: 16,
     borderRadius: 8,
     elevation: 2,
-    alignItems: 'center',
+    alignItems: "center",
+    width: "100%",
   },
   statNumber: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2196F3',
+    fontWeight: "bold",
+    color: "#2196F3",
   },
   statLabel: {
     fontSize: 12,
-    color: '#666',
-    textAlign: 'center',
+    color: "#666",
+    textAlign: "center",
     marginTop: 4,
   },
   card: {
@@ -359,8 +442,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   quickActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginTop: 16,
   },
   actionButton: {
@@ -368,9 +451,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   emptyText: {
-    textAlign: 'center',
-    color: '#666',
-    fontStyle: 'italic',
+    textAlign: "center",
+    color: "#666",
+    fontStyle: "italic",
     marginTop: 16,
   },
   reportItem: {
@@ -380,20 +463,20 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   reportHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 8,
   },
   reportTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
     flex: 1,
     marginRight: 8,
   },
   reportDescription: {
-    color: '#666',
+    color: "#666",
     marginBottom: 8,
   },
   submissionItem: {
@@ -403,33 +486,37 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   submissionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 8,
   },
   submissionTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
     flex: 1,
     marginLeft: 8,
     marginRight: 8,
   },
   submissionDate: {
-    color: '#666',
+    color: "#666",
     fontSize: 12,
+  },
+  reportActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   bottomSpacing: {
     height: 80,
   },
   fab: {
-    position: 'absolute',
+    position: "absolute",
     margin: 16,
     right: 0,
     bottom: 0,
-    backgroundColor: '#2196F3',
+    backgroundColor: "#2196F3",
   },
 });
 
 export default DashboardScreen;
-

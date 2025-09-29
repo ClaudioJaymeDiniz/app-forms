@@ -5,6 +5,7 @@ import {
   TextInput, 
   Button, 
   Card, 
+  Title,
   ActivityIndicator,
   Menu,
   Divider,
@@ -29,18 +30,20 @@ const CreateReportScreen: React.FC = () => {
   const route = useRoute<CreateReportScreenRouteProp>();
   const { state } = useAuth();
   
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [fields, setFields] = useState<ReportField[]>([]);
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projectMenuVisible, setProjectMenuVisible] = useState(false);
-  
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [fields, setFields] = useState<ReportField[]>([]);
+  const [accessType, setAccessType] = useState<'public' | 'specific'>('public');
+  const [allowedUsers, setAllowedUsers] = useState<string[]>([]);
+  const [newUserEmail, setNewUserEmail] = useState('');
 
   useEffect(() => {
     loadProjects();
-  }, []);
+  }, [state.user]);
 
   const loadProjects = async () => {
     try {
@@ -61,6 +64,34 @@ const CreateReportScreen: React.FC = () => {
     }
   };
 
+  const handleAddUser = () => {
+    if (!newUserEmail.trim()) {
+      Alert.alert('Erro', 'Por favor, informe um email válido');
+      return;
+    }
+
+    const email = newUserEmail.trim().toLowerCase();
+    
+    // Validação básica de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Erro', 'Por favor, informe um email válido');
+      return;
+    }
+
+    if (allowedUsers.includes(email)) {
+      Alert.alert('Erro', 'Este usuário já foi adicionado');
+      return;
+    }
+
+    setAllowedUsers(prev => [...prev, email]);
+    setNewUserEmail('');
+  };
+
+  const handleRemoveUser = (index: number) => {
+    setAllowedUsers(prev => prev.filter((_, i) => i !== index));
+  };
+
   const validateForm = () => {
     if (!title.trim()) {
       Alert.alert('Erro', 'Por favor, informe o título do relatório');
@@ -77,6 +108,11 @@ const CreateReportScreen: React.FC = () => {
       return false;
     }
 
+    if (accessType === 'specific' && allowedUsers.length === 0) {
+      Alert.alert('Erro', 'Por favor, adicione pelo menos um usuário com permissão para preencher o relatório');
+      return false;
+    }
+
     return true;
   };
 
@@ -87,21 +123,40 @@ const CreateReportScreen: React.FC = () => {
 
     setLoading(true);
     try {
-      await databaseService.createReport({
-        projectId: selectedProject.id,
+      // Configurar permissões baseadas no tipo de acesso
+      const permissions = {
+        canFill: accessType === 'public' ? ['*'] : allowedUsers,
+        canEdit: [state.user.id], // Apenas o criador pode editar
+        canView: accessType === 'public' ? ['*'] : [...allowedUsers, state.user.id],
+        canConsolidate: [state.user.id] // Apenas o criador pode consolidar
+      };
+
+      console.log('Creating report with data:', {
         title: title.trim(),
         description: description.trim() || undefined,
-        fields,
-        permissions: {
-          canFill: [state.user.id],
-          canEdit: [state.user.id],
-          canView: [state.user.id],
-          canConsolidate: [state.user.id]
-        },
+        projectId: selectedProject.id,
+        createdBy: state.user.id,
+        fields: fields.map((field, index) => ({
+          ...field,
+          order: index
+        })),
+        permissions,
+        status: 'active'
+      });
+
+      await databaseService.createReport({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        projectId: selectedProject.id,
+        createdBy: state.user.id,
+        fields: fields.map((field, index) => ({
+          ...field,
+          order: index
+        })),
+        permissions,
         status: 'active',
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        createdBy: state.user.id
+        updatedAt: new Date().toISOString()
       });
 
       Alert.alert(
@@ -111,7 +166,7 @@ const CreateReportScreen: React.FC = () => {
       );
     } catch (error) {
       console.error('Error creating report:', error);
-      Alert.alert('Erro', 'Falha ao criar relatório. Tente novamente.');
+      Alert.alert('Erro', `Falha ao criar relatório: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setLoading(false);
     }
@@ -123,7 +178,8 @@ const CreateReportScreen: React.FC = () => {
       type,
       label: `Campo ${fields.length + 1}`,
       required: false,
-      order: fields.length
+      order: fields.length,
+      ...(type === 'select' && { options: ['Opção 1'] }) // Inicializa com uma opção padrão para select
     };
 
     setFields([...fields, newField]);
@@ -168,7 +224,7 @@ const CreateReportScreen: React.FC = () => {
       <ScrollView style={styles.scrollView}>
         <Card style={styles.card}>
           <Card.Content>
-            <Text style={styles.title}>Novo Relatório</Text>
+            <Title style={styles.title}>Novo Relatório</Title>
             <Text style={styles.subtitle}>
               Configure os campos e permissões do seu relatório
             </Text>
@@ -272,6 +328,51 @@ const CreateReportScreen: React.FC = () => {
                       style={styles.fieldInput}
                     />
 
+                    {/* Opções para lista suspensa */}
+                    {field.type === 'select' && (
+                      <View style={styles.selectOptionsContainer}>
+                        <Text style={styles.selectOptionsTitle}>Opções da Lista:</Text>
+                        {(field.options || []).map((option, optionIndex) => (
+                          <View key={optionIndex} style={styles.selectOptionItem}>
+                            <TextInput
+                              value={option}
+                              onChangeText={(text) => {
+                                const newOptions = [...(field.options || [])];
+                                newOptions[optionIndex] = text;
+                                updateField(field.id, { options: newOptions });
+                              }}
+                              mode="outlined"
+                              style={styles.selectOptionInput}
+                              placeholder={`Opção ${optionIndex + 1}`}
+                            />
+                            <Button
+                              mode="text"
+                              onPress={() => {
+                                const newOptions = [...(field.options || [])];
+                                newOptions.splice(optionIndex, 1);
+                                updateField(field.id, { options: newOptions });
+                              }}
+                              compact
+                              textColor="#F44336"
+                            >
+                              Remover
+                            </Button>
+                          </View>
+                        ))}
+                        <Button
+                          mode="outlined"
+                          onPress={() => {
+                            const newOptions = [...(field.options || []), ''];
+                            updateField(field.id, { options: newOptions });
+                          }}
+                          style={styles.addOptionButton}
+                          icon="plus"
+                        >
+                          Adicionar Opção
+                        </Button>
+                      </View>
+                    )}
+
                     <View style={styles.fieldOptions}>
                       <Button
                         mode={field.required ? "contained" : "outlined"}
@@ -286,6 +387,93 @@ const CreateReportScreen: React.FC = () => {
                 </Card>
               ))
             )}
+
+            {/* Permissões de Acesso */}
+            <Card style={styles.card}>
+              <Card.Content>
+                <Title>Permissões de Acesso</Title>
+                
+                <View style={styles.permissionSection}>
+                  <Text style={styles.permissionLabel}>Quem pode preencher este relatório?</Text>
+                  
+                  <View style={styles.permissionOptions}>
+                    <Button
+                      mode={accessType === 'public' ? "contained" : "outlined"}
+                      onPress={() => setAccessType('public')}
+                      style={styles.permissionButton}
+                      icon="earth"
+                    >
+                      Público (Qualquer usuário)
+                    </Button>
+                    
+                    <Button
+                      mode={accessType === 'specific' ? "contained" : "outlined"}
+                      onPress={() => setAccessType('specific')}
+                      style={styles.permissionButton}
+                      icon="account-group"
+                    >
+                      Usuários Específicos
+                    </Button>
+                  </View>
+
+                  {accessType === 'specific' && (
+                    <View style={styles.specificUsersSection}>
+                      <Text style={styles.specificUsersLabel}>Adicionar usuários:</Text>
+                      
+                      <View style={styles.addUserRow}>
+                        <TextInput
+                          label="Email do usuário"
+                          value={newUserEmail}
+                          onChangeText={setNewUserEmail}
+                          mode="outlined"
+                          style={styles.userEmailInput}
+                          placeholder="usuario@exemplo.com"
+                          keyboardType="email-address"
+                          autoCapitalize="none"
+                        />
+                        <Button
+                          mode="contained"
+                          onPress={handleAddUser}
+                          style={styles.addUserButton}
+                          icon="plus"
+                          compact
+                        >
+                          Adicionar
+                        </Button>
+                      </View>
+
+                      {allowedUsers.length > 0 && (
+                        <View style={styles.usersList}>
+                          <Text style={styles.usersListTitle}>Usuários com acesso:</Text>
+                          {allowedUsers.map((email, index) => (
+                            <View key={index} style={styles.userItem}>
+                              <Text style={styles.userEmail}>{email}</Text>
+                              <Button
+                                mode="text"
+                                onPress={() => handleRemoveUser(index)}
+                                compact
+                                textColor="#F44336"
+                              >
+                                Remover
+                              </Button>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  <View style={styles.permissionInfo}>
+                    <Text style={styles.permissionInfoText}>
+                      {accessType === 'public' 
+                        ? "ℹ️ Qualquer usuário logado poderá preencher este relatório"
+                        : "ℹ️ Apenas os usuários listados acima poderão preencher este relatório"
+                      }
+                    </Text>
+                  </View>
+                </View>
+              </Card.Content>
+            </Card>
 
             <View style={styles.buttonContainer}>
               <Button
@@ -411,20 +599,114 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: 8,
   },
-  optionButton: {
-    marginRight: 8,
-  },
-  buttonContainer: {
+  actionButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 24,
   },
-  button: {
+  optionButton: {
+    marginHorizontal: 4,
+  },
+  selectOptionsContainer: {
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  selectOptionsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  selectOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  selectOptionInput: {
     flex: 1,
-    marginHorizontal: 8,
+    marginRight: 8,
+  },
+  addOptionButton: {
+    marginTop: 8,
+  },
+  permissionSection: {
+    marginTop: 16,
+  },
+  permissionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  permissionOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  permissionButton: {
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  specificUsersSection: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+  },
+  specificUsersLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  addUserRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  userEmailInput: {
+    flex: 1,
+    marginRight: 8,
+  },
+  addUserButton: {
+    paddingHorizontal: 16,
+  },
+  usersList: {
+    marginTop: 16,
+  },
+  usersListTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  userItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  userEmail: {
+    fontSize: 14,
+    color: '#333',
+  },
+  permissionInfo: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#e3f2fd',
+    borderRadius: 6,
+  },
+  permissionInfoText: {
+    fontSize: 12,
+    color: '#1976d2',
+    lineHeight: 16,
   },
   bottomSpacing: {
-    height: 80,
+    height: 100,
   },
   fab: {
     position: 'absolute',

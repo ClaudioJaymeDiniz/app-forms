@@ -50,15 +50,34 @@ const ReportsScreen: React.FC = () => {
       const userProjects = await databaseService.getProjectsByUserId(state.user.id);
       setProjects(userProjects);
 
-      // Carrega todos os relatórios dos projetos
-      const allReports: Report[] = [];
+      // Carrega todos os relatórios dos projetos do usuário
+      const ownedReports: Report[] = [];
       for (const project of userProjects) {
         const projectReports = await databaseService.getReportsByProjectId(project.id);
-        allReports.push(...projectReports);
+        ownedReports.push(...projectReports);
       }
+
+      // Carrega todos os relatórios onde o usuário tem permissão para preencher
+      const allReports = await databaseService.getAllReports();
+      const accessibleReports = allReports.filter(report => {
+        // Inclui se o usuário é o criador
+        if (report.createdBy === state.user.id) return true;
+        
+        // Inclui se o relatório é público
+        if (report.permissions.canFill.includes('*')) return true;
+        
+        // Inclui se o usuário está na lista de permissões
+        if (report.permissions.canFill.includes(state.user.email)) return true;
+        
+        return false;
+      });
       
-      // Ordena por data de criação (mais recentes primeiro)
-      const sortedReports = allReports.sort((a, b) => 
+      // Remove duplicatas e ordena por data de criação (mais recentes primeiro)
+      const uniqueReports = Array.from(
+        new Map(accessibleReports.map(report => [report.id, report])).values()
+      );
+      
+      const sortedReports = uniqueReports.sort((a, b) => 
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       
@@ -153,7 +172,7 @@ const ReportsScreen: React.FC = () => {
       >
         {filteredReports.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Ionicons name="document-text-outline" size={80} color="#ccc" />
+            <Ionicons name="document-outline" size={80} color="#ccc" />
             <Text style={styles.emptyTitle}>
               {reports.length === 0 ? 'Nenhum relatório encontrado' : 'Nenhum resultado encontrado'}
             </Text>
@@ -168,7 +187,7 @@ const ReportsScreen: React.FC = () => {
                 mode="contained"
                 onPress={navigateToCreateReport}
                 style={styles.createButton}
-                icon="document-text"
+                icon="document"
               >
                 Criar Primeiro Relatório
               </Button>

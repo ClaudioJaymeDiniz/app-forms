@@ -37,6 +37,12 @@ class SyncService {
     this.syncInProgress = true;
 
     try {
+      // Verifica se o banco foi inicializado antes de sincronizar
+      if (!databaseService.isInitialized()) {
+        console.warn('Database not initialized, skipping sync');
+        return;
+      }
+
       await this.processSyncQueue();
       await this.syncPendingSubmissions();
       

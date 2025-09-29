@@ -1,35 +1,38 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { 
-  Text, 
-  TextInput, 
-  Button, 
-  Card, 
-  Title, 
+import React, { useState } from "react";
+import { View, StyleSheet, ScrollView, Alert } from "react-native";
+import {
+  Text,
+  TextInput,
+  Button,
+  Card,
+  Title,
   Divider,
-  ActivityIndicator 
-} from 'react-native-paper';
-import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
+  ActivityIndicator,
+} from "react-native-paper";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
 
-import { useAuth } from '../contexts/AuthContext';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import { useAuth } from "../contexts/AuthContext";
+import { RootStackParamList } from "../navigation/AppNavigator";
 
-type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
+type LoginScreenNavigationProp = StackNavigationProp<
+  RootStackParamList,
+  "Login"
+>;
 
 const LoginScreen: React.FC = () => {
   const navigation = useNavigation<LoginScreenNavigationProp>();
   const { login, loginWithGoogle, loginWithMicrosoft, isLoading } = useAuth();
-  
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Erro', 'Por favor, preencha todos os campos');
+      Alert.alert("Erro", "Por favor, preencha todos os campos");
       return;
     }
 
@@ -37,7 +40,7 @@ const LoginScreen: React.FC = () => {
     try {
       await login({ email: email.trim(), password });
     } catch (error) {
-      Alert.alert('Erro', 'Falha no login. Verifique suas credenciais.');
+      Alert.alert("Erro", "Falha no login. Verifique suas credenciais.");
     } finally {
       setLoginLoading(false);
     }
@@ -47,7 +50,7 @@ const LoginScreen: React.FC = () => {
     try {
       await loginWithGoogle();
     } catch (error) {
-      Alert.alert('Erro', 'Falha no login com Google');
+      Alert.alert("Erro", "Falha no login com Google");
     }
   };
 
@@ -55,12 +58,12 @@ const LoginScreen: React.FC = () => {
     try {
       await loginWithMicrosoft();
     } catch (error) {
-      Alert.alert('Erro', 'Falha no login com Microsoft');
+      Alert.alert("Erro", "Falha no login com Microsoft");
     }
   };
 
   const navigateToRegister = () => {
-    navigation.navigate('Register');
+    navigation.navigate("Register");
   };
 
   if (isLoading) {
@@ -72,10 +75,13 @@ const LoginScreen: React.FC = () => {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+    >
       <View style={styles.header}>
-        <Ionicons name="document-text" size={80} color="#2196F3" />
-        <Title style={styles.title}>Reports App</Title>
+        <Ionicons name="document" size={80} color="#2196F3" />
+        <Text style={styles.title}>Reports App</Text>
         <Text style={styles.subtitle}>
           Gerencie seus relatórios de forma simples e eficiente
         </Text>
@@ -84,7 +90,7 @@ const LoginScreen: React.FC = () => {
       <Card style={styles.card}>
         <Card.Content>
           <Title style={styles.cardTitle}>Entrar</Title>
-          
+
           <TextInput
             label="Email"
             value={email}
@@ -105,8 +111,8 @@ const LoginScreen: React.FC = () => {
             style={styles.input}
             left={<TextInput.Icon icon="lock" />}
             right={
-              <TextInput.Icon 
-                icon={showPassword ? "eye-off" : "eye"} 
+              <TextInput.Icon
+                icon={showPassword ? "eye-off" : "eye"}
                 onPress={() => setShowPassword(!showPassword)}
               />
             }
@@ -163,9 +169,7 @@ const LoginScreen: React.FC = () => {
       </Card>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Versão 1.0.0 - Reports App
-        </Text>
+        <Text style={styles.footerText}>Versão 1.0.0 - Reports App</Text>
       </View>
     </ScrollView>
   );
@@ -174,7 +178,7 @@ const LoginScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
   },
   contentContainer: {
     flexGrow: 1,
@@ -182,25 +186,25 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f5f5f5",
   },
   header: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 30,
     marginTop: 40,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#2196F3',
+    fontWeight: "bold",
+    color: "#2196F3",
     marginTop: 16,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
+    color: "#666",
+    textAlign: "center",
     marginTop: 8,
     paddingHorizontal: 20,
   },
@@ -209,9 +213,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   cardTitle: {
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 20,
-    color: '#333',
+    color: "#333",
   },
   input: {
     marginBottom: 16,
@@ -225,13 +229,13 @@ const styles = StyleSheet.create({
     marginVertical: 20,
   },
   orText: {
-    textAlign: 'center',
-    color: '#666',
+    textAlign: "center",
+    color: "#666",
     marginBottom: 16,
   },
   socialButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 20,
   },
   socialButton: {
@@ -239,30 +243,29 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   googleButton: {
-    borderColor: '#db4437',
+    borderColor: "#db4437",
   },
   microsoftButton: {
-    borderColor: '#0078d4',
+    borderColor: "#0078d4",
   },
   registerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     marginTop: 10,
   },
   registerText: {
-    color: '#666',
+    color: "#666",
   },
   footer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 30,
     marginBottom: 20,
   },
   footerText: {
-    color: '#999',
+    color: "#999",
     fontSize: 12,
   },
 });
 
 export default LoginScreen;
-
