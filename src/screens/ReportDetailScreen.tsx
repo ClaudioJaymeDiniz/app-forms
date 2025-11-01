@@ -16,6 +16,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 
 import { databaseService } from '../database/database';
+import { useAuth } from '../contexts/AuthContext';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Report, Project } from '../types';
 
@@ -25,6 +26,7 @@ type ReportDetailScreenRouteProp = RouteProp<RootStackParamList, 'ReportDetail'>
 const ReportDetailScreen: React.FC = () => {
   const navigation = useNavigation<ReportDetailScreenNavigationProp>();
   const route = useRoute<ReportDetailScreenRouteProp>();
+  const { state } = useAuth();
   
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<Report | null>(null);
@@ -61,18 +63,18 @@ const ReportDetailScreen: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'draft': return '#FF9800';
-      case 'active': return '#4CAF50';
-      case 'archived': return '#9E9E9E';
+      case 'rascunho': return '#FF9800';
+      case 'ativo': return '#4CAF50';
+      case 'arquivado': return '#9E9E9E';
       default: return '#9E9E9E';
     }
   };
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'draft': return 'Rascunho';
-      case 'active': return 'Ativo';
-      case 'archived': return 'Arquivado';
+      case 'rascunho': return 'Rascunho';
+      case 'ativo': return 'Ativo';
+      case 'arquivado': return 'Arquivado';
       default: return 'Desconhecido';
     }
   };
@@ -179,7 +181,7 @@ const ReportDetailScreen: React.FC = () => {
             </View>
           </View>
 
-          {report.status === 'active' && (
+          {report.status === 'ativo' && (
             <Button
               mode="contained"
               onPress={navigateToFillReport}

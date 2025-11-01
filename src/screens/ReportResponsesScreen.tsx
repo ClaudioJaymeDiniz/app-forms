@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, StyleSheet, ScrollView, RefreshControl } from "react-native";
+import { View, StyleSheet, ScrollView, RefreshControl, Alert } from "react-native";
 import {
   Text,
   Card,
@@ -16,6 +16,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { databaseService } from "../database/database";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { Report, ReportSubmission, User } from "../types";
+import { exportSubmissionsToCSV } from "../utils/exportUtils";
 
 type ReportResponsesScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -91,6 +92,31 @@ const ReportResponsesScreen: React.FC = () => {
     setRefreshing(true);
     loadData();
   };
+
+  const handleExportSubmittedCSV = async () => {
+    try {
+      const submitted = submissions.filter((s) => s.status === "enviado");
+      if (submitted.length === 0) {
+        Alert.alert("Sem respostas enviadas", "Não há respostas com status 'Enviado' para exportar.");
+        return;
+      }
+      const baseTitle = report.title || "relatorio";
+      const slug = baseTitle
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .replace(/--+/g, "-") || "relatorio";
+      const fileName = `respostas-${slug}.csv`;
+      const path = await exportSubmissionsToCSV(submitted, fileName);
+      Alert.alert("Exportação concluída", `Arquivo salvo: ${path}`);
+    } catch (err) {
+      Alert.alert("Erro", "Falha ao exportar CSV de respostas enviadas");
+    }
+  };
+
+  const hasSubmitted = submissions.some((s) => s.status === "enviado");
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -178,6 +204,11 @@ const ReportResponsesScreen: React.FC = () => {
           <Text style={styles.statsText}>
             Total de respostas: {submissions.length}
           </Text>
+          <View style={styles.headerActions}>
+            <Button mode="outlined" icon="download" onPress={handleExportSubmittedCSV} disabled={!hasSubmitted}>
+              Exportar CSV (Enviadas)
+            </Button>
+          </View>
         </Card.Content>
       </Card>
 
@@ -250,7 +281,7 @@ const ReportResponsesScreen: React.FC = () => {
                 </View>
               ))}
 
-              {submission.status === "submitted" &&
+              {submission.status === "enviado" &&
                 state.user?.id === report.createdBy && (
                   <View style={styles.actionButtons}>
                     <Button
@@ -324,6 +355,11 @@ const styles = StyleSheet.create({
   headerCard: {
     marginBottom: 16,
     elevation: 4,
+  },
+  headerActions: {
+    marginTop: 12,
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
   description: {
     color: "#666",

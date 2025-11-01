@@ -21,6 +21,7 @@ import { databaseService } from '../database/database';
 import { syncService } from '../services/syncService';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Report, ReportSubmission, ReportField } from '../types';
+import * as DocumentPicker from 'expo-document-picker';
 
 type FillReportScreenNavigationProp = StackNavigationProp<RootStackParamList, 'FillReport'>;
 type FillReportScreenRouteProp = RouteProp<RootStackParamList, 'FillReport'>;
@@ -65,18 +66,17 @@ const FillReportScreen: React.FC = () => {
 
       // Se foi passado um submissionId, carrega a submissão existente
       if (route.params.submissionId) {
-        // TODO: Implementar busca de submissão por ID
-        // const submissionData = await databaseService.getSubmissionById(route.params.submissionId);
-        // if (submissionData) {
-        //   setSubmission(submissionData);
-        //   setFormData(submissionData.data);
-        // }
+        const submissionData = await databaseService.getSubmissionById(route.params.submissionId);
+        if (submissionData) {
+          setSubmission(submissionData);
+          setFormData(submissionData.data);
+        }
       } else {
         // Verifica se já existe uma submissão em rascunho para este usuário
         if (state.user) {
           const userSubmissions = await databaseService.getSubmissionsByUserId(state.user.id);
           const draftSubmission = userSubmissions.find(
-            s => s.reportId === reportData.id && s.status === 'draft'
+            s => s.reportId === reportData.id && s.status === 'rascunho'
           );
           
           if (draftSubmission) {
@@ -99,14 +99,14 @@ const FillReportScreen: React.FC = () => {
     try {
       if (submission) {
         // Atualiza submissão existente
-        await syncService.updateSubmissionOffline(submission.id, formData);
+        await syncService.updateSubmissionOffline(submission.id, formData, undefined, state.user?.id || undefined);
       } else {
         // Cria nova submissão
         const submissionId = await syncService.saveSubmissionOffline(
           report.id,
           state.user.id,
           formData,
-          'draft'
+          'rascunho'
         );
         
         // Carrega a submissão criada
@@ -170,15 +170,15 @@ const FillReportScreen: React.FC = () => {
     setSaving(true);
     try {
       if (submission) {
-        // Atualiza submissão existente para 'submitted'
-        await syncService.updateSubmissionOffline(submission.id, formData, 'submitted');
+        // Atualiza submissão existente para 'enviado'
+        await syncService.updateSubmissionOffline(submission.id, formData, 'enviado', state.user?.id || undefined);
       } else {
-        // Cria nova submissão como 'submitted'
+        // Cria nova submissão como 'enviado'
         await syncService.saveSubmissionOffline(
           report.id,
           state.user.id,
           formData,
-          'submitted'
+          'enviado'
         );
       }
 
@@ -281,7 +281,44 @@ const FillReportScreen: React.FC = () => {
             </Text>
             <Button
               mode="outlined"
-              onPress={() => Alert.alert('Em breve', 'Funcionalidade de upload em desenvolvimento')}
+              onPress={async () => {
+                try {
+                  const pickerTypes = field.type === 'image' ? ['image/*'] : ['*/*'];
+                  const result = await DocumentPicker.getDocumentAsync({ type: pickerTypes });
+                  // result can be canceled or contain assets
+                  if ('canceled' in result && result.canceled) {
+                    return;
+                  }
+                  const asset = 'assets' in result && result.assets && result.assets.length > 0 ? result.assets[0] : null;
+                  if (!asset) {
+                    Alert.alert('Erro', 'Nenhum arquivo selecionado');
+                    return;
+                  }
+                  const fileData = {
+                    uri: asset.uri,
+                    name: asset.name || 'arquivo',
+                    mimeType: asset.mimeType || (field.type === 'image' ? 'image/*' : 'application/octet-stream'),
+                    size: asset.size || 0,
+                  };
+                  // Validações básicas
+                  if (field.validation?.maxFileSize && fileData.size > field.validation.maxFileSize) {
+                    Alert.alert('Arquivo muito grande', `Tamanho máximo: ${Math.round(field.validation.maxFileSize / (1024 * 1024))} MB`);
+                    return;
+                  }
+                  if (field.validation?.fileTypes && fileData.mimeType) {
+                    const allowed = field.validation.fileTypes;
+                    const isAllowed = allowed.some(t => fileData.mimeType?.startsWith(t) || fileData.name.toLowerCase().endsWith(t.toLowerCase()));
+                    if (!isAllowed) {
+                      Alert.alert('Tipo de arquivo inválido', `Tipos permitidos: ${allowed.join(', ')}`);
+                      return;
+                    }
+                  }
+                  handleFieldChange(field.id, fileData);
+                } catch (error) {
+                  console.error('File pick error', error);
+                  Alert.alert('Erro', 'Falha ao selecionar arquivo');
+                }
+              }}
               style={styles.fileButton}
               icon={field.type === 'image' ? 'image' : 'file'}
             >
@@ -292,7 +329,7 @@ const FillReportScreen: React.FC = () => {
                 onClose={() => handleFieldChange(field.id, null)}
                 style={styles.fileChip}
               >
-                {value}
+                {value.name || 'arquivo selecionado'}
               </Chip>
             )}
           </View>
@@ -344,7 +381,7 @@ const FillReportScreen: React.FC = () => {
                 style={styles.statusChip}
                 textStyle={{ color: '#fff' }}
               >
-                {submission.status === 'draft' ? 'Rascunho salvo' : 'Enviado'}
+                {submission.status === 'rascunho' ? 'Rascunho salvo' : 'Enviado'}
               </Chip>
             )}
           </Card.Content>

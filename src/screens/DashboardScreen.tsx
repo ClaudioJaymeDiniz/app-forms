@@ -14,19 +14,26 @@ import {
   Surface,
   ActivityIndicator,
   FAB,
+  Searchbar,
 } from "react-native-paper";
 import { Ionicons } from "@expo/vector-icons";
 import Entypo from "@expo/vector-icons/Entypo";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, CompositeNavigationProp } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
+import { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 
 import { useAuth } from "../contexts/AuthContext";
 import { databaseService } from "../database/database";
 import { syncService } from "../services/syncService";
-import { RootStackParamList } from "../navigation/AppNavigator";
-import { Project, Report, ReportSubmission, DashboardStats } from "../types";
+import { RootStackParamList, MainTabParamList } from "../navigation/AppNavigator";
+import { Project, Report, ReportSubmission, DashboardStats, ReportFilter } from "../types";
+import { Alert } from "react-native";
+import { exportSubmissionsToCSV } from "../utils/exportUtils";
 
-type DashboardScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+type DashboardScreenNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Dashboard'>,
+  StackNavigationProp<RootStackParamList>
+>;
 
 const DashboardScreen: React.FC = () => {
   const navigation = useNavigation<DashboardScreenNavigationProp>();
@@ -40,6 +47,7 @@ const DashboardScreen: React.FC = () => {
   const [recentSubmissions, setRecentSubmissions] = useState<
     ReportSubmission[]
   >([]);
+  const [allUserSubmissions, setAllUserSubmissions] = useState<ReportSubmission[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     totalReports: 0,
     pendingReports: 0,
@@ -48,6 +56,12 @@ const DashboardScreen: React.FC = () => {
     recentActivity: [],
   });
   const [isOnline, setIsOnline] = useState(syncService.isConnected());
+  const [filters, setFilters] = useState<ReportFilter>({
+    status: [],
+    projectId: undefined,
+    searchTerm: "",
+    dateRange: undefined,
+  });
 
   useEffect(() => {
     loadDashboardData();
@@ -93,15 +107,16 @@ const DashboardScreen: React.FC = () => {
       const userSubmissions = await databaseService.getSubmissionsByUserId(
         state.user.id
       );
+      setAllUserSubmissions(userSubmissions);
       setRecentSubmissions(userSubmissions.slice(0, 5));
 
       // Calcula estatísticas
       const totalReports = allReports.length;
       const pendingReports = userSubmissions.filter(
-        (s) => s.status === "draft"
+        (s) => s.status === "rascunho"
       ).length;
       const completedReports = userSubmissions.filter(
-        (s) => s.status === "submitted"
+        (s) => s.status === "enviado"
       ).length;
       const overdueReports = 0; // TODO: implementar lógica de prazo
 
@@ -117,6 +132,102 @@ const DashboardScreen: React.FC = () => {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  const toggleStatusFilter = (status: string) => {
+    setFilters((prev) => {
+      const current = prev.status || [];
+      const exists = current.includes(status);
+      return { ...prev, status: exists ? current.filter((s) => s !== status) : [...current, status] };
+    });
+  };
+
+  const applyFilters = () => {
+    const matchesStatus = (s: ReportSubmission) => {
+      if (!filters.status || filters.status.length === 0) return true;
+      return filters.status.includes(s.status);
+    };
+
+    const matchesProject = (s: ReportSubmission) => {
+      if (!filters.projectId) return true;
+      const report = recentReports.find((r) => r.id === s.reportId);
+      return report ? report.projectId === filters.projectId : true;
+    };
+
+    const matchesSearch = (s: ReportSubmission) => {
+      const term = (filters.searchTerm || '').trim().toLowerCase();
+      if (!term) return true;
+      const report = recentReports.find((r) => r.id === s.reportId);
+      const inReport = report && (
+        report.title.toLowerCase().includes(term) ||
+        (report.description || '').toLowerCase().includes(term)
+      );
+      const inData = JSON.stringify(s.data || {}).toLowerCase().includes(term);
+      return !!inReport || inData;
+    };
+
+    return allUserSubmissions.filter((s) => matchesStatus(s) && matchesProject(s) && matchesSearch(s));
+  };
+
+  const filteredSubmissions = applyFilters();
+  const hasFiltered = filteredSubmissions.length > 0;
+  const statusCounts = {
+    rascunho: filteredSubmissions.filter((s) => s.status === 'rascunho').length,
+    enviado: filteredSubmissions.filter((s) => s.status === 'enviado').length,
+    aprovado: filteredSubmissions.filter((s) => s.status === 'aprovado').length,
+    rejeitado: filteredSubmissions.filter((s) => s.status === 'rejeitado').length,
+  };
+
+  const maxCount = Math.max(1, ...Object.values(statusCounts));
+
+  const handleExportCSV = async () => {
+    try {
+      if (filteredSubmissions.length === 0) {
+        Alert.alert('Sem dados', 'Não há submissões filtradas para exportar.');
+        return;
+      }
+      const base = 'submissoes';
+      const projectSlug = filters.projectId
+        ? (projects.find((p) => p.id === filters.projectId)?.name || 'projeto')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .replace(/--+/g, '-')
+        : '';
+      const statusSlug = (filters.status && filters.status.length > 0)
+        ? filters.status.join('-').toLowerCase().replace(/[^a-z0-9-]+/g, '-')
+        : '';
+      const q = (filters.searchTerm || '').trim();
+      const querySlug = q
+        ? q
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .replace(/--+/g, '-')
+            .slice(0, 40)
+        : '';
+      const dateSlug = (filters.dateRange && filters.dateRange.start && filters.dateRange.end)
+        ? (() => {
+            const fmt = (s: string) => {
+              try { return new Date(s).toISOString().slice(0, 10); } catch { return s; }
+            };
+            return `de-${fmt(filters.dateRange.start)}-a-${fmt(filters.dateRange.end)}`
+              .toLowerCase()
+              .replace(/[^a-z0-9-]+/g, '-')
+              .replace(/--+/g, '-');
+          })()
+        : '';
+      const parts = [base, projectSlug, statusSlug, querySlug, dateSlug].filter(Boolean);
+      const fileName = `${parts.join('-') || base}.csv`;
+      const path = await exportSubmissionsToCSV(filteredSubmissions, fileName);
+      Alert.alert('Exportação concluída', `Arquivo salvo: ${path}`);
+    } catch (err) {
+      Alert.alert('Erro', 'Falha ao exportar CSV');
     }
   };
 
@@ -143,13 +254,13 @@ const DashboardScreen: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "draft":
+      case "rascunho":
         return "#FF9800";
-      case "submitted":
+      case "enviado":
         return "#4CAF50";
-      case "approved":
+      case "aprovado":
         return "#2196F3";
-      case "rejected":
+      case "rejeitado":
         return "#F44336";
       default:
         return "#9E9E9E";
@@ -158,13 +269,13 @@ const DashboardScreen: React.FC = () => {
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case "draft":
+      case "rascunho":
         return "Rascunho";
-      case "submitted":
+      case "enviado":
         return "Enviado";
-      case "approved":
+      case "aprovado":
         return "Aprovado";
-      case "rejected":
+      case "rejeitado":
         return "Rejeitado";
       default:
         return "Desconhecido";
@@ -272,6 +383,70 @@ const DashboardScreen: React.FC = () => {
                 <Entypo name="text-document" />
                 Novo Relatório
               </Button>
+              <Button
+                mode="outlined"
+                onPress={handleExportCSV}
+                style={styles.actionButton}
+                disabled={!hasFiltered}
+              >
+                <Ionicons name="download" size={18} /> Exportar CSV
+              </Button>
+            </View>
+          </Card.Content>
+        </Card>
+
+        {/* Filtros */}
+        <Card style={styles.card}>
+          <Card.Content>
+            <Text>Filtros</Text>
+            <View style={{ marginTop: 12 }}>
+              <Searchbar
+                placeholder="Buscar por título, descrição ou dados"
+                value={filters.searchTerm}
+                onChangeText={(text) => setFilters((prev) => ({ ...prev, searchTerm: text }))}
+                style={{ marginBottom: 12 }}
+              />
+              <Text style={{ marginBottom: 8 }}>Status</Text>
+              <View style={styles.filterRow}>
+                {['rascunhos', 'enviados', 'aprovados', 'rejeitados'].map((st) => (
+                  <Chip
+                    key={st}
+                    selected={filters.status?.includes(st)}
+                    onPress={() => toggleStatusFilter(st)}
+                    style={styles.filterChip}
+                  >
+                    {st}
+                  </Chip>
+                ))}
+              </View>
+              <Text style={{ marginVertical: 8 }}>Projetos</Text>
+              <View style={styles.filterRow}>
+                {projects.map((p) => (
+                  <Chip
+                    key={p.id}
+                    selected={filters.projectId === p.id}
+                    onPress={() => setFilters((prev) => ({ ...prev, projectId: prev.projectId === p.id ? undefined : p.id }))}
+                    style={styles.filterChip}
+                  >
+                    {p.name}
+                  </Chip>
+                ))}
+              </View>
+            </View>
+          </Card.Content>
+        </Card>
+
+        {/* Gráfico simples por status */}
+        <Card style={styles.card}>
+          <Card.Content>
+            <Text>Resumo por Status</Text>
+            <View style={styles.chartRow}>
+              {Object.entries(statusCounts).map(([key, count]) => (
+                <View key={key} style={styles.chartBarContainer}>
+                  <View style={[styles.chartBar, { height: Math.max(20, (count / maxCount) * 120) }]} />
+                  <Text style={styles.chartLabel}>{key} ({count})</Text>
+                </View>
+              ))}
             </View>
           </Card.Content>
         </Card>
@@ -449,6 +624,37 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     marginHorizontal: 4,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+  },
+  filterChip: {
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  chartRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-around',
+    height: 160,
+    marginTop: 12,
+  },
+  chartBarContainer: {
+    alignItems: 'center',
+    width: 70,
+  },
+  chartBar: {
+    width: 40,
+    backgroundColor: '#2196F3',
+    borderRadius: 6,
+  },
+  chartLabel: {
+    marginTop: 6,
+    color: '#666',
+    fontSize: 12,
+    textAlign: 'center',
   },
   emptyText: {
     textAlign: "center",

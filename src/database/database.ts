@@ -341,7 +341,7 @@ class DatabaseService {
   async getSubmissionsByReportId(
     reportId: string
   ): Promise<ReportSubmission[]> {
-    if (!this.db) throw new Error("Database not initialized");
+    if (!this.db) throw new Error("Database não inicializado");
 
     const results = await this.db.getAllAsync<any>(
       "SELECT * FROM report_submissions WHERE report_id = ? ORDER BY last_modified DESC",
@@ -362,11 +362,11 @@ class DatabaseService {
     }));
   }
 
-  async getUserById(id: string): Promise<User | null> {
+  async getSubmissionById(id: string): Promise<ReportSubmission | null> {
     if (!this.db) throw new Error("Database not initialized");
 
     const result = await this.db.getFirstAsync<any>(
-      "SELECT * FROM users WHERE id = ?",
+      "SELECT * FROM report_submissions WHERE id = ?",
       [id]
     );
 
@@ -374,13 +374,18 @@ class DatabaseService {
 
     return {
       id: result.id,
-      email: result.email,
-      name: result.name,
-      role: result.role,
-      createdAt: result.created_at,
-      updatedAt: result.updated_at,
+      reportId: result.report_id,
+      userId: result.user_id,
+      data: JSON.parse(result.data),
+      status: result.status,
+      submittedAt: result.submitted_at || undefined,
+      lastModified: result.last_modified,
+      version: result.version,
+      isOffline: !!result.is_offline,
+      syncStatus: result.sync_status,
     };
   }
+
 
   async createSubmission(
     submission: Omit<ReportSubmission, "id">
@@ -448,6 +453,26 @@ class DatabaseService {
       `UPDATE report_submissions SET ${updates.join(", ")} WHERE id = ?`,
       values
     );
+  }
+
+  async createReportVersion(versionData: Omit<ReportVersion, 'id'>): Promise<string> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    const id = this.generateId();
+    await this.db.runAsync(
+      "INSERT INTO report_versions (id, submission_id, version, data, changed_by, changed_at, changes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [
+        id,
+        versionData.submissionId,
+        versionData.version,
+        JSON.stringify(versionData.data),
+        versionData.changedBy,
+        versionData.changedAt,
+        versionData.changes,
+      ]
+    );
+
+    return id;
   }
 
   async getSubmissionsByUserId(userId: string): Promise<ReportSubmission[]> {
@@ -540,6 +565,88 @@ class DatabaseService {
   // Método utilitário para gerar IDs únicos
   private generateId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
+  }
+
+  // Métodos para notificações
+  async createNotification(notification: Omit<Notification, "id">): Promise<string> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    const id = this.generateId();
+    const now = new Date().toISOString();
+
+    await this.db.runAsync(
+      "INSERT INTO notifications (id, user_id, type, title, message, data, read, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        id,
+        notification.user_id,
+        notification.type,
+        notification.title,
+        notification.message,
+        notification.data || null,
+        notification.read ? 1 : 0,
+        notification.created_at || now,
+      ]
+    );
+
+    return id;
+  }
+
+  async getNotificationsByUserId(userId: string): Promise<Notification[]> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    const results = await this.db.getAllAsync<any>(
+      "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC",
+      [userId]
+    );
+
+    return results.map((result) => ({
+      id: result.id,
+      user_id: result.user_id,
+      type: result.type,
+      title: result.title,
+      message: result.message,
+      data: result.data || undefined,
+      read: Boolean(result.read),
+      created_at: result.created_at,
+    }));
+  }
+
+  async getUnreadNotificationsCount(userId: string): Promise<number> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    const result = await this.db.getFirstAsync<{ count: number }>(
+      "SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND read = 0",
+      [userId]
+    );
+
+    return result?.count || 0;
+  }
+
+  async markNotificationAsRead(id: string): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    await this.db.runAsync(
+      "UPDATE notifications SET read = 1 WHERE id = ?",
+      [id]
+    );
+  }
+
+  async markAllNotificationsAsRead(userId: string): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    await this.db.runAsync(
+      "UPDATE notifications SET read = 1 WHERE user_id = ?",
+      [userId]
+    );
+  }
+
+  async deleteNotification(id: string): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    await this.db.runAsync(
+      "DELETE FROM notifications WHERE id = ?",
+      [id]
+    );
   }
 
   // Método para limpar dados (útil para desenvolvimento)

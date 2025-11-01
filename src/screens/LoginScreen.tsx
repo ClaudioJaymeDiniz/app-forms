@@ -5,7 +5,6 @@ import {
   TextInput,
   Button,
   Card,
-  Title,
   Divider,
   ActivityIndicator,
 } from "react-native-paper";
@@ -81,7 +80,7 @@ const LoginScreen: React.FC = () => {
     >
       <View style={styles.header}>
         <Ionicons name="document" size={80} color="#2196F3" />
-        <Text style={styles.title}>Reports App</Text>
+        <Text style={styles.title}>Relatórios App</Text>
         <Text style={styles.subtitle}>
           Gerencie seus relatórios de forma simples e eficiente
         </Text>
@@ -89,7 +88,7 @@ const LoginScreen: React.FC = () => {
 
       <Card style={styles.card}>
         <Card.Content>
-          <Title style={styles.cardTitle}>Entrar</Title>
+          <Text style={styles.cardTitle}>Entrar</Text>
 
           <TextInput
             label="Email"
@@ -169,7 +168,7 @@ const LoginScreen: React.FC = () => {
       </Card>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Versão 1.0.0 - Reports App</Text>
+        <Text style={styles.footerText}>Versão 1.0.0 - Relatórios App</Text>
       </View>
     </ScrollView>
   );

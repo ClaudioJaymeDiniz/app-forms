@@ -33,7 +33,7 @@ export interface Report {
   description?: string;
   fields: ReportField[];
   permissions: ReportPermissions;
-  status: 'draft' | 'active' | 'archived';
+  status: 'rascunho' | 'ativo' | 'arquivado';
   createdAt: string;
   updatedAt: string;
   createdBy: string;
@@ -70,7 +70,7 @@ export interface ReportSubmission {
   reportId: string;
   userId: string;
   data: Record<string, any>; // Dados preenchidos pelo usuário
-  status: 'draft' | 'submitted' | 'approved' | 'rejected';
+  status: 'rascunho' | 'enviado' | 'aprovado' | 'rejeitado';
   submittedAt?: string;
   lastModified: string;
   version: number;
@@ -90,13 +90,13 @@ export interface ReportVersion {
 
 export interface Notification {
   id: string;
-  userId: string;
-  type: 'report_available' | 'deadline_approaching' | 'new_result' | 'report_approved' | 'report_rejected';
+  user_id: string;
+  type: string;
   title: string;
   message: string;
-  data?: Record<string, any>; // Dados adicionais específicos do tipo
+  data?: string;
   read: boolean;
-  createdAt: string;
+  created_at: string;
 }
 
 export interface SyncQueue {
@@ -161,9 +161,10 @@ export interface ActivityItem {
 
 // Tipos para exportação
 export interface ExportOptions {
-  format: 'pdf' | 'excel';
+  format: 'pdf' | 'excel' | 'csv';
   reportIds: string[];
   includeCharts: boolean;
+  fileName?: string;
   dateRange?: {
     start: string;
     end: string;

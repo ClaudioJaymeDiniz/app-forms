@@ -210,18 +210,28 @@ class SyncService {
     reportId: string,
     userId: string,
     data: Record<string, any>,
-    status: 'draft' | 'submitted' = 'draft'
+    status: 'rascunho' | 'enviado' = 'rascunho'
   ): Promise<string> {
     const submissionId = await databaseService.createSubmission({
       reportId,
       userId,
       data,
       status,
-      submittedAt: status === 'submitted' ? new Date().toISOString() : undefined,
+      submittedAt: status === 'enviado' ? new Date().toISOString() : undefined,
       lastModified: new Date().toISOString(),
       version: 1,
       isOffline: true,
       syncStatus: 'pending'
+    });
+
+    // Registrar versão inicial
+    await databaseService.createReportVersion({
+      submissionId: submissionId,
+      version: 1,
+      data,
+      changedBy: userId,
+      changedAt: new Date().toISOString(),
+      changes: 'Initial submission'
     });
 
     // Adiciona à fila de sincronização
@@ -230,7 +240,7 @@ class SyncService {
       userId,
       data,
       status,
-      submittedAt: status === 'submitted' ? new Date().toISOString() : undefined
+      submittedAt: status === 'enviado' ? new Date().toISOString() : undefined
     });
 
     return submissionId;
@@ -240,21 +250,38 @@ class SyncService {
   async updateSubmissionOffline(
     submissionId: string,
     data: Record<string, any>,
-    status?: 'draft' | 'submitted'
+    status?: 'rascunho' | 'enviado',
+    changedBy?: string
   ): Promise<void> {
+    const existing = await databaseService.getSubmissionById(submissionId);
+    const now = new Date().toISOString();
+    const newVersion = (existing?.version ?? 1) + 1;
+
     const updateData: Partial<ReportSubmission> = {
       data,
+      lastModified: now,
+      version: newVersion,
       syncStatus: 'pending'
     };
 
     if (status) {
       updateData.status = status;
-      if (status === 'submitted') {
-        updateData.submittedAt = new Date().toISOString();
+      if (status === 'enviado') {
+        updateData.submittedAt = now;
       }
     }
 
     await databaseService.updateSubmission(submissionId, updateData);
+
+    // Registrar versão
+    await databaseService.createReportVersion({
+      submissionId,
+      version: newVersion,
+      data,
+      changedBy: changedBy || 'system',
+      changedAt: now,
+      changes: status === 'enviado' ? 'Submitted update' : 'Draft update'
+    });
 
     // Adiciona à fila de sincronização
     await this.addToSyncQueue('submission', 'update', submissionId, {

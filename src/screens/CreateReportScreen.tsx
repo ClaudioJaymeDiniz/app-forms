@@ -5,14 +5,15 @@ import {
   TextInput, 
   Button, 
   Card, 
-  Title,
   ActivityIndicator,
   Menu,
   Divider,
   List,
-  FAB
+  FAB,
+  Portal,
+  Dialog
 } from 'react-native-paper';
-import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
@@ -40,6 +41,7 @@ const CreateReportScreen: React.FC = () => {
   const [accessType, setAccessType] = useState<'public' | 'specific'>('public');
   const [allowedUsers, setAllowedUsers] = useState<string[]>([]);
   const [newUserEmail, setNewUserEmail] = useState('');
+  const [addFieldDialogVisible, setAddFieldDialogVisible] = useState(false);
 
   useEffect(() => {
     loadProjects();
@@ -154,7 +156,7 @@ const CreateReportScreen: React.FC = () => {
           order: index
         })),
         permissions,
-        status: 'active',
+        status: 'ativo',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
@@ -198,7 +200,7 @@ const CreateReportScreen: React.FC = () => {
   const getFieldTypeIcon = (type: ReportField['type']) => {
     switch (type) {
       case 'text': return 'text';
-      case 'textarea': return 'text-long';
+      case 'textarea': return 'form-textarea';
       case 'checkbox': return 'checkbox-marked';
       case 'select': return 'menu-down';
       case 'file': return 'file';
@@ -219,12 +221,21 @@ const CreateReportScreen: React.FC = () => {
     }
   };
 
+  const fieldOptions = [
+    { label: 'Texto', value: 'text' },
+    { label: 'Texto longo', value: 'textarea' },
+    { label: 'Checkbox', value: 'checkbox' },
+    { label: 'Lista suspensa', value: 'select' },
+    { label: 'Arquivo', value: 'file' },
+    { label: 'Imagem', value: 'image' }
+  ];
+
   return (
     <View style={styles.container}>
       <ScrollView style={styles.scrollView}>
         <Card style={styles.card}>
           <Card.Content>
-            <Title style={styles.title}>Novo Relatório</Title>
+            <Text style={styles.title}>Novo Relatório</Text>
             <Text style={styles.subtitle}>
               Configure os campos e permissões do seu relatório
             </Text>
@@ -293,7 +304,7 @@ const CreateReportScreen: React.FC = () => {
                   <Card.Content>
                     <View style={styles.fieldHeader}>
                       <View style={styles.fieldInfo}>
-                        <Ionicons 
+                        <MaterialCommunityIcons 
                           name={getFieldTypeIcon(field.type)} 
                           size={20} 
                           color="#2196F3" 
@@ -308,7 +319,7 @@ const CreateReportScreen: React.FC = () => {
                         compact
                         textColor="#F44336"
                       >
-                        Remover
+                        X
                       </Button>
                     </View>
 
@@ -391,7 +402,7 @@ const CreateReportScreen: React.FC = () => {
             {/* Permissões de Acesso */}
             <Card style={styles.card}>
               <Card.Content>
-                <Title>Permissões de Acesso</Title>
+                <Text>Permissões de Acesso</Text>
                 
                 <View style={styles.permissionSection}>
                   <Text style={styles.permissionLabel}>Quem pode preencher este relatório?</Text>
@@ -403,7 +414,7 @@ const CreateReportScreen: React.FC = () => {
                       style={styles.permissionButton}
                       icon="earth"
                     >
-                      Público (Qualquer usuário)
+                      Público
                     </Button>
                     
                     <Button
@@ -412,7 +423,7 @@ const CreateReportScreen: React.FC = () => {
                       style={styles.permissionButton}
                       icon="account-group"
                     >
-                      Usuários Específicos
+                      Usuários
                     </Button>
                   </View>
 
@@ -501,33 +512,41 @@ const CreateReportScreen: React.FC = () => {
         <View style={styles.bottomSpacing} />
       </ScrollView>
 
-      {/* Menu de adicionar campos */}
-      <Menu
-        visible={false}
-        onDismiss={() => {}}
-        anchor={
-          <FAB
-            style={styles.fab}
-            icon="plus"
-            label="Adicionar Campo"
-            onPress={() => {
-              Alert.alert(
-                'Adicionar Campo',
-                'Selecione o tipo de campo:',
-                [
-                  { text: 'Texto', onPress: () => addField('text') },
-                  { text: 'Texto longo', onPress: () => addField('textarea') },
-                  { text: 'Checkbox', onPress: () => addField('checkbox') },
-                  { text: 'Lista suspensa', onPress: () => addField('select') },
-                  { text: 'Arquivo', onPress: () => addField('file') },
-                  { text: 'Imagem', onPress: () => addField('image') },
-                  { text: 'Cancelar', style: 'cancel' }
-                ]
-              );
-            }}
-          />
-        }
+      {/* FAB para adicionar campos */}
+      <FAB
+        style={styles.fab}
+        icon="plus"
+        label="Adicionar Campo"
+        onPress={() => setAddFieldDialogVisible(true)}
       />
+
+      <Portal>
+        <Dialog visible={addFieldDialogVisible} onDismiss={() => setAddFieldDialogVisible(false)}>
+          <Dialog.Title>Adicionar Campo</Dialog.Title>
+          <Dialog.Content>
+            {fieldOptions.map(option => (
+              <List.Item
+                key={option.value}
+                title={option.label}
+                onPress={() => {
+                  addField(option.value as ReportField['type']);
+                  setAddFieldDialogVisible(false);
+                }}
+                left={() => (
+                  <MaterialCommunityIcons 
+                    name={getFieldTypeIcon(option.value as ReportField['type'])} 
+                    size={20} 
+                    color="#2196F3" 
+                  />
+                )}
+              />
+            ))}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setAddFieldDialogVisible(false)}>Cancelar</Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </View>
   );
 };
@@ -704,6 +723,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#1976d2',
     lineHeight: 16,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 24,
+  },
+  button: {
+    flex: 1,
+    marginHorizontal: 4,
   },
   bottomSpacing: {
     height: 100,

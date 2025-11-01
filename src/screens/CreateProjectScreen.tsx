@@ -5,7 +5,6 @@ import {
   TextInput, 
   Button, 
   Card, 
-  Title,
   ActivityIndicator
 } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
@@ -72,7 +71,7 @@ const CreateProjectScreen: React.FC = () => {
     <ScrollView style={styles.container}>
       <Card style={styles.card}>
         <Card.Content>
-          <Title style={styles.title}>Novo Projeto</Title>
+          <Text style={styles.title}>Novo Projeto</Text>
           <Text style={styles.subtitle}>
             Crie um novo projeto para organizar seus relatórios
           </Text>

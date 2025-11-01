@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { AuthState, User, LoginCredentials, RegisterData } from '../types';
 import { databaseService } from '../database/database';
@@ -58,15 +59,52 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
   const [isLoading, setIsLoading] = React.useState(true);
 
+  const isWeb = Platform.OS === 'web';
+
+  const secureGetItem = async (key: string): Promise<string | null> => {
+    if (isWeb) {
+      try {
+        return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+      } catch {
+        return null;
+      }
+    }
+    return await SecureStore.getItemAsync(key);
+  };
+
+  const secureSetItem = async (key: string, value: string): Promise<void> => {
+    if (isWeb) {
+      try {
+        if (typeof localStorage !== 'undefined') localStorage.setItem(key, value);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    await SecureStore.setItemAsync(key, value);
+  };
+
+  const secureDeleteItem = async (key: string): Promise<void> => {
+    if (isWeb) {
+      try {
+        if (typeof localStorage !== 'undefined') localStorage.removeItem(key);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    await SecureStore.deleteItemAsync(key);
+  };
+
   useEffect(() => {
     checkAuthState();
   }, []);
 
   const checkAuthState = async () => {
     try {
-      const token = await SecureStore.getItemAsync('auth_token');
-      const refreshToken = await SecureStore.getItemAsync('refresh_token');
-      const userJson = await SecureStore.getItemAsync('user_data');
+      const token = await secureGetItem('auth_token');
+      const refreshToken = await secureGetItem('refresh_token');
+      const userJson = await secureGetItem('user_data');
 
       if (token && userJson) {
         const user = JSON.parse(userJson);
@@ -110,9 +148,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const refreshToken = `refresh_${Date.now()}`;
 
       // Salva dados de autenticação
-      await SecureStore.setItemAsync('auth_token', token);
-      await SecureStore.setItemAsync('refresh_token', refreshToken);
-      await SecureStore.setItemAsync('user_data', JSON.stringify(user));
+      await secureSetItem('auth_token', token);
+      await secureSetItem('refresh_token', refreshToken);
+      await secureSetItem('user_data', JSON.stringify(user));
 
       dispatch({
         type: 'LOGIN_SUCCESS',
@@ -153,9 +191,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const token = `token_${Date.now()}`;
       const refreshToken = `refresh_${Date.now()}`;
 
-      await SecureStore.setItemAsync('auth_token', token);
-      await SecureStore.setItemAsync('refresh_token', refreshToken);
-      await SecureStore.setItemAsync('user_data', JSON.stringify(user));
+      await secureSetItem('auth_token', token);
+      await secureSetItem('refresh_token', refreshToken);
+      await secureSetItem('user_data', JSON.stringify(user));
 
       dispatch({
         type: 'LOGIN_SUCCESS',
@@ -171,9 +209,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = async () => {
     try {
-      await SecureStore.deleteItemAsync('auth_token');
-      await SecureStore.deleteItemAsync('refresh_token');
-      await SecureStore.deleteItemAsync('user_data');
+      await secureDeleteItem('auth_token');
+      await secureDeleteItem('refresh_token');
+      await secureDeleteItem('user_data');
       
       dispatch({ type: 'LOGOUT' });
     } catch (error) {

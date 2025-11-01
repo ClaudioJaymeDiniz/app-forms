@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native';
 import { 
   Text, 
   Card, 
-  Title, 
   Button, 
   FAB,
   ActivityIndicator,
@@ -18,6 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { databaseService } from '../database/database';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Report, Project } from '../types';
+import { exportReportsToCSV } from '../utils/exportUtils';
 
 type ReportsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -31,6 +31,8 @@ const ReportsScreen: React.FC = () => {
   const [filteredReports, setFilteredReports] = useState<Report[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -40,7 +42,7 @@ const ReportsScreen: React.FC = () => {
 
   useEffect(() => {
     filterReports();
-  }, [searchQuery, reports]);
+  }, [searchQuery, reports, selectedStatuses, selectedProjectId]);
 
   const loadReports = async () => {
     try {
@@ -91,17 +93,72 @@ const ReportsScreen: React.FC = () => {
   };
 
   const filterReports = () => {
-    if (!searchQuery.trim()) {
-      setFilteredReports(reports);
-      return;
-    }
-
-    const filtered = reports.filter(report =>
-      report.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (report.description && report.description.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
-    
+    const text = searchQuery.trim().toLowerCase();
+    const filtered = reports.filter((report) => {
+      const matchesSearch = !text ||
+        report.title.toLowerCase().includes(text) ||
+        (report.description && report.description.toLowerCase().includes(text));
+      const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(report.status);
+      const matchesProject = !selectedProjectId || report.projectId === selectedProjectId;
+      return matchesSearch && matchesStatus && matchesProject;
+    });
     setFilteredReports(filtered);
+  };
+
+  const toggleStatus = (status: 'draft' | 'active' | 'archived') => {
+    setSelectedStatuses((prev) =>
+      prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
+    );
+  };
+
+  const selectProject = (projectId: string | null) => {
+    setSelectedProjectId(projectId);
+  };
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedStatuses([]);
+    setSelectedProjectId(null);
+  };
+
+  const handleExportReportsCSV = async () => {
+    try {
+      if (!filteredReports || filteredReports.length === 0) {
+        Alert.alert('Sem dados', 'Não há relatórios filtrados para exportar.');
+        return;
+      }
+      const base = 'relatorios';
+      const projectSlug = selectedProjectId
+        ? (getProjectName(selectedProjectId) || 'projeto')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .replace(/--+/g, '-')
+        : '';
+      const statusSlug = selectedStatuses.length > 0
+        ? selectedStatuses.join('-').toLowerCase().replace(/[^a-z0-9-]+/g, '-')
+        : '';
+      const q = searchQuery.trim();
+      const querySlug = q
+        ? q
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .replace(/--+/g, '-')
+            .slice(0, 40)
+        : '';
+
+      const parts = [base, projectSlug, statusSlug, querySlug].filter(Boolean);
+      const fileName = `${parts.join('-') || base}.csv`;
+      const path = await exportReportsToCSV(filteredReports, fileName);
+      Alert.alert('Exportação concluída', `Arquivo salvo: ${path}`);
+    } catch (err) {
+      Alert.alert('Erro', 'Falha ao exportar CSV de relatórios');
+    }
   };
 
   const onRefresh = () => {
@@ -162,6 +219,61 @@ const ReportsScreen: React.FC = () => {
           value={searchQuery}
           style={styles.searchbar}
         />
+        <View style={styles.searchActions}>
+          <Button mode="text" icon="filter-remove" onPress={clearFilters} style={styles.searchActionButton}>
+            Limpar filtros
+          </Button>
+          <Button mode="outlined" icon="download" onPress={handleExportReportsCSV} disabled={!filteredReports || filteredReports.length === 0}>
+            Exportar CSV
+          </Button>
+        </View>
+        <View style={styles.filtersContainer}>
+          <Text style={styles.filterTitle}>Status</Text>
+          <View style={styles.chipsRow}>
+            <Chip
+              selected={selectedStatuses.includes('draft')}
+              onPress={() => toggleStatus('draft')}
+              style={styles.chip}
+            >
+              Rascunho
+            </Chip>
+            <Chip
+              selected={selectedStatuses.includes('active')}
+              onPress={() => toggleStatus('active')}
+              style={styles.chip}
+            >
+              Ativo
+            </Chip>
+            <Chip
+              selected={selectedStatuses.includes('archived')}
+              onPress={() => toggleStatus('archived')}
+              style={styles.chip}
+            >
+              Arquivado
+            </Chip>
+          </View>
+
+          <Text style={styles.filterTitle}>Projeto</Text>
+          <View style={styles.chipsRow}>
+            <Chip
+              selected={!selectedProjectId}
+              onPress={() => selectProject(null)}
+              style={styles.chip}
+            >
+              Todos
+            </Chip>
+            {projects.map((p) => (
+              <Chip
+                key={p.id}
+                selected={selectedProjectId === p.id}
+                onPress={() => selectProject(p.id)}
+                style={styles.chip}
+              >
+                {p.name}
+              </Chip>
+            ))}
+          </View>
+        </View>
       </View>
 
       <ScrollView 
@@ -200,7 +312,7 @@ const ReportsScreen: React.FC = () => {
                 <Card.Content>
                   <View style={styles.reportHeader}>
                     <View style={styles.reportInfo}>
-                      <Title style={styles.reportTitle}>{report.title}</Title>
+                      <Text style={styles.reportTitle}>{report.title}</Text>
                       <Text style={styles.projectName}>
                         {getProjectName(report.projectId)}
                       </Text>
@@ -237,7 +349,7 @@ const ReportsScreen: React.FC = () => {
                       onPress={() => navigateToFillReport(report.id)}
                       style={styles.actionButton}
                       icon="edit"
-                      disabled={report.status !== 'active'}
+                      disabled={report.status !== 'ativo'}
                     >
                       Preencher
                     </Button>
@@ -268,6 +380,26 @@ const ReportsScreen: React.FC = () => {
   );
 };
 
+const StatusSummary: React.FC<{ filteredReports: Report[] }> = ({ filteredReports }) => {
+  const counts = React.useMemo(() => {
+    return filteredReports.reduce(
+      (acc, r) => {
+        acc[r.status] = (acc[r.status] || 0) + 1;
+        return acc;
+      },
+      { draft: 0, active: 0, archived: 0 } as Record<'draft' | 'active' | 'archived', number>
+    );
+  }, [filteredReports]);
+
+  return (
+    <View style={styles.statusSummaryRow}>
+      <Chip mode="outlined" style={styles.summaryChip}>Rascunho: {counts.draft}</Chip>
+      <Chip mode="outlined" style={styles.summaryChip}>Ativo: {counts.active}</Chip>
+      <Chip mode="outlined" style={styles.summaryChip}>Arquivado: {counts.archived}</Chip>
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -281,6 +413,42 @@ const styles = StyleSheet.create({
   searchbar: {
     elevation: 0,
     backgroundColor: '#f5f5f5',
+  },
+  searchActions: {
+    marginTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  searchActionButton: {
+    marginRight: 8,
+  },
+  filtersContainer: {
+    marginTop: 12,
+  },
+  filterTitle: {
+    marginTop: 8,
+    marginBottom: 4,
+    color: '#555',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  chip: {
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  statusSummaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  summaryChip: {
+    marginRight: 6,
+    marginBottom: 6,
+    borderColor: '#ddd',
   },
   scrollView: {
     flex: 1,

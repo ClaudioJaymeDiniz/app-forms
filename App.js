@@ -75,7 +75,7 @@ export default function App() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={theme.colors.primary} />
             <Text style={styles.loadingText}>
-              {initError ? 'Erro na inicialização' : 'Inicializando Reports App...'}
+              {initError ? 'Erro na inicialização' : 'Inicializando Aplicativo de Relatórios...'}
             </Text>
             {initError && (
               <Text style={styles.errorText}>{initError}</Text>
