@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "402252132632",
+    "project_id": "app-formulario-ade3b",
+    "storage_bucket": "app-formulario-ade3b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:402252132632:android:b69eb70e5add25b99dee6d",
+        "android_client_info": {
+          "package_name": "fatec.appforms"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "402252132632-gdlsl31ha34v5uf3bbces7274b1er9l9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCDBT_8JaMb2l-6W4Y4zs_1yo0LL4CAN0A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "402252132632-gdlsl31ha34v5uf3bbces7274b1er9l9.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, StyleSheet, ScrollView, RefreshControl, Alert } from "react-native";
+import { View, StyleSheet, ScrollView, RefreshControl, Alert, Image, Platform, TouchableOpacity } from "react-native";
 import {
   Text,
   Card,
@@ -17,6 +17,8 @@ import { databaseService } from "../database/database";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { Report, ReportSubmission, User } from "../types";
 import { exportSubmissionsToCSV } from "../utils/exportUtils";
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 
 type ReportResponsesScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
@@ -120,13 +122,13 @@ const ReportResponsesScreen: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "submitted":
+      case "enviado":
         return "#4CAF50";
-      case "draft":
+      case "rascunho":
         return "#FF9800";
-      case "approved":
+      case "aprovado":
         return "#2196F3";
-      case "rejected":
+      case "rejeitado":
         return "#F44336";
       default:
         return "#757575";
@@ -135,13 +137,13 @@ const ReportResponsesScreen: React.FC = () => {
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case "submitted":
+      case "enviado":
         return "Enviado";
-      case "draft":
+      case "rascunho":
         return "Rascunho";
-      case "approved":
+      case "aprovado":
         return "Aprovado";
-      case "rejected":
+      case "rejeitado":
         return "Rejeitado";
       default:
         return status;
@@ -153,18 +155,115 @@ const ReportResponsesScreen: React.FC = () => {
   };
 
   const renderFieldValue = (
-    fieldId: string,
-    value: any,
-    fieldLabel: string
+    field: Report["fields"][number],
+    value: any
   ) => {
     if (value === null || value === undefined || value === "") {
       return <Text style={styles.fieldValue}>Não preenchido</Text>;
     }
 
-    if (typeof value === "boolean") {
-      return <Text style={styles.fieldValue}>{value ? "Sim" : "Não"}</Text>;
+  if (typeof value === "boolean") {
+    return <Text style={styles.fieldValue}>{value ? "Sim" : "Não"}</Text>;
+  }
+
+  // Suporte para valores como string (uri) e arrays de arquivos/imagens
+  if (typeof value === 'string' || Array.isArray(value)) {
+    const items = Array.isArray(value) ? value : [value];
+    const entries = items
+      .map((v) => typeof v === 'string' ? { uri: v, name: v.split('/').pop(), mimeType: field.type === 'image' ? 'image/*' : undefined } : null)
+      .filter((e): e is { uri: string; name?: string; mimeType?: string } => !!e);
+
+    if (entries.length > 0) {
+      return (
+        <View style={{ paddingLeft: 8 }}>
+          {entries.map((file, idx) => {
+            const isImage = field.type === 'image' || (file.mimeType?.startsWith('image/'));
+            if (isImage) {
+              return (
+                <View key={`${file.uri}-${idx}`} style={{ marginBottom: 10 }}>
+                  <Image source={{ uri: file.uri }} style={{ width: 240, height: 180, borderRadius: 6 }} />
+                  {file.name ? <Text style={{ marginTop: 6, color: '#666' }}>{file.name}</Text> : null}
+                  {Platform.OS === 'web' ? (
+                    <TouchableOpacity onPress={() => (window.open(file.uri, '_blank') as any)}>
+                      <Text style={{ color: '#2196F3', marginTop: 4 }}>Abrir em nova guia</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              );
+            }
+            return (
+              <View key={`${file.uri}-${idx}`} style={{ marginBottom: 10 }}>
+                <Text style={{ color: '#666' }}>{file.name || 'arquivo'}</Text>
+                {Platform.OS === 'web' ? (
+                  <TouchableOpacity onPress={() => (window.open(file.uri, '_blank') as any)} style={{ marginTop: 6 }}>
+                    <Text style={{ color: '#2196F3' }}>Abrir/Compartilhar</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      );
+    }
+  }
+
+  // Exibir imagens e arquivos quando o valor vier do DocumentPicker
+  if (typeof value === 'object' && value !== null && 'uri' in value) {
+      const file = value as { uri: string; name?: string; mimeType?: string; size?: number };
+      const isImage = field.type === 'image' || (file.mimeType?.startsWith('image/'));
+
+      if (isImage) {
+        return (
+          <View style={{ paddingLeft: 8 }}>
+            <Image source={{ uri: file.uri }} style={{ width: 240, height: 180, borderRadius: 6 }} />
+            {file.name ? <Text style={{ marginTop: 6, color: '#666' }}>{file.name}</Text> : null}
+            {Platform.OS === 'web' && /^https?:\/\//.test(file.uri) ? (
+              <TouchableOpacity onPress={() => window.open(file.uri, '_blank') as any}>
+                <Text style={{ color: '#2196F3', marginTop: 4 }}>Abrir em nova guia</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        );
+      }
+
+      // Arquivos genéricos: oferecer compartilhamento/abertura
+      const handleOpenFile = async () => {
+        try {
+          if (Platform.OS === 'android' && file.uri.startsWith('content://')) {
+            // Garantir content URI legível
+            const contentUri = await FileSystem.getContentUriAsync(file.uri);
+            const available = await Sharing.isAvailableAsync();
+            if (available) {
+              await Sharing.shareAsync(contentUri, { mimeType: file.mimeType || 'application/octet-stream' });
+              return;
+            }
+          }
+
+          const available = await Sharing.isAvailableAsync();
+          if (available) {
+            await Sharing.shareAsync(file.uri, { mimeType: file.mimeType || 'application/octet-stream' });
+          } else if (Platform.OS === 'web' && /^https?:\/\//.test(file.uri)) {
+            window.open(file.uri, '_blank');
+          } else {
+            Alert.alert('Abertura não suportada', 'Não foi possível abrir/compartilhar este arquivo nesta plataforma.');
+          }
+        } catch (e) {
+          console.error('Erro ao abrir arquivo:', e);
+          Alert.alert('Erro', 'Falha ao abrir o arquivo.');
+        }
+      };
+
+      return (
+        <View style={{ paddingLeft: 8 }}>
+          <Text style={{ color: '#666' }}>{file.name || 'arquivo'}</Text>
+          <TouchableOpacity onPress={handleOpenFile} style={{ marginTop: 6 }}>
+            <Text style={{ color: '#2196F3' }}>Abrir/Compartilhar</Text>
+          </TouchableOpacity>
+        </View>
+      );
     }
 
+    // Strings/ números
     return <Text style={styles.fieldValue}>{String(value)}</Text>;
   };
 
@@ -228,7 +327,7 @@ const ReportResponsesScreen: React.FC = () => {
                 navigation.navigate("FillReport", { reportId: report.id })
               }
               style={styles.fillReportButton}
-              icon="edit"
+              icon="pencil"
             >
               Preencher este relatório
             </Button>
@@ -273,11 +372,7 @@ const ReportResponsesScreen: React.FC = () => {
               {report.fields.map((field) => (
                 <View key={field.id} style={styles.fieldContainer}>
                   <Text style={styles.fieldLabel}>{field.label}:</Text>
-                  {renderFieldValue(
-                    field.id,
-                    submission.data[field.id],
-                    field.label
-                  )}
+                  {renderFieldValue(field, submission.data[field.id])}
                 </View>
               ))}
 

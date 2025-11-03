@@ -22,7 +22,7 @@ type LoginScreenNavigationProp = StackNavigationProp<
 
 const LoginScreen: React.FC = () => {
   const navigation = useNavigation<LoginScreenNavigationProp>();
-  const { login, loginWithGoogle, loginWithMicrosoft, isLoading } = useAuth();
+  const { login, loginWithGoogle, loginWithFacebook, isLoading } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -53,11 +53,11 @@ const LoginScreen: React.FC = () => {
     }
   };
 
-  const handleMicrosoftLogin = async () => {
+  const handleFacebookLogin = async () => {
     try {
-      await loginWithMicrosoft();
+      await loginWithFacebook();
     } catch (error) {
-      Alert.alert("Erro", "Falha no login com Microsoft");
+      Alert.alert("Erro", "Falha no login com Facebook");
     }
   };
 
@@ -144,12 +144,12 @@ const LoginScreen: React.FC = () => {
 
             <Button
               mode="outlined"
-              onPress={handleMicrosoftLogin}
-              style={[styles.socialButton, styles.microsoftButton]}
-              icon="microsoft"
+              onPress={handleFacebookLogin}
+              style={[styles.socialButton, styles.facebookButton]}
+              icon="facebook"
               disabled={loginLoading}
             >
-              Microsoft
+              Facebook
             </Button>
           </View>
 
@@ -244,8 +244,8 @@ const styles = StyleSheet.create({
   googleButton: {
     borderColor: "#db4437",
   },
-  microsoftButton: {
-    borderColor: "#0078d4",
+  facebookButton: {
+    borderColor: "#1877f2",
   },
   registerContainer: {
     flexDirection: "row",

@@ -21,7 +21,8 @@ import { RouteProp } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { databaseService } from '../database/database';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { Project, ReportField } from '../types';
+import { Project, ReportField, Report } from '../types';
+import { syncService } from '../services/syncService';
 
 type CreateReportScreenNavigationProp = StackNavigationProp<RootStackParamList, 'CreateReport'>;
 type CreateReportScreenRouteProp = RouteProp<RootStackParamList, 'CreateReport'>;
@@ -146,7 +147,8 @@ const CreateReportScreen: React.FC = () => {
         status: 'active'
       });
 
-      await databaseService.createReport({
+      const now = new Date().toISOString();
+      const reportData: Omit<Report, 'id'> = {
         title: title.trim(),
         description: description.trim() || undefined,
         projectId: selectedProject.id,
@@ -156,9 +158,17 @@ const CreateReportScreen: React.FC = () => {
           order: index
         })),
         permissions,
-        status: 'ativo',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        status: 'ativo' as 'ativo',
+        createdAt: now,
+        updatedAt: now
+      };
+
+      const reportId = await databaseService.createReport(reportData);
+
+      // Adiciona à fila de sincronização para popular o Firebase
+      await syncService.addToSyncQueue('report', 'create', reportId, {
+        id: reportId,
+        ...reportData,
       });
 
       Alert.alert(

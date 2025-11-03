@@ -105,7 +105,7 @@ const ReportsScreen: React.FC = () => {
     setFilteredReports(filtered);
   };
 
-  const toggleStatus = (status: 'draft' | 'active' | 'archived') => {
+  const toggleStatus = (status: 'rascunho' | 'ativo' | 'arquivado') => {
     setSelectedStatuses((prev) =>
       prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status]
     );
@@ -185,18 +185,18 @@ const ReportsScreen: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'draft': return '#FF9800';
-      case 'active': return '#4CAF50';
-      case 'archived': return '#9E9E9E';
+      case 'rascunho': return '#FF9800';
+      case 'ativo': return '#4CAF50';
+      case 'arquivado': return '#9E9E9E';
       default: return '#9E9E9E';
     }
   };
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'draft': return 'Rascunho';
-      case 'active': return 'Ativo';
-      case 'archived': return 'Arquivado';
+      case 'rascunho': return 'Rascunho';
+      case 'ativo': return 'Ativo';
+      case 'arquivado': return 'Arquivado';
       default: return 'Desconhecido';
     }
   };
@@ -231,22 +231,22 @@ const ReportsScreen: React.FC = () => {
           <Text style={styles.filterTitle}>Status</Text>
           <View style={styles.chipsRow}>
             <Chip
-              selected={selectedStatuses.includes('draft')}
-              onPress={() => toggleStatus('draft')}
+              selected={selectedStatuses.includes('rascunho')}
+              onPress={() => toggleStatus('rascunho')}
               style={styles.chip}
             >
               Rascunho
             </Chip>
             <Chip
-              selected={selectedStatuses.includes('active')}
-              onPress={() => toggleStatus('active')}
+              selected={selectedStatuses.includes('ativo')}
+              onPress={() => toggleStatus('ativo')}
               style={styles.chip}
             >
               Ativo
             </Chip>
             <Chip
-              selected={selectedStatuses.includes('archived')}
-              onPress={() => toggleStatus('archived')}
+              selected={selectedStatuses.includes('arquivado')}
+              onPress={() => toggleStatus('arquivado')}
               style={styles.chip}
             >
               Arquivado
@@ -348,7 +348,7 @@ const ReportsScreen: React.FC = () => {
                       mode="contained"
                       onPress={() => navigateToFillReport(report.id)}
                       style={styles.actionButton}
-                      icon="edit"
+                      icon="pencil"
                       disabled={report.status !== 'ativo'}
                     >
                       Preencher

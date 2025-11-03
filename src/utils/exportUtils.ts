@@ -1,8 +1,10 @@
-import * as FileSystem from 'expo-file-system';
+// Usa a API legada para evitar avisos de deprecação no SDK atual
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { ReportSubmission, Report, ExportOptions } from '../types';
 import * as XLSX from 'xlsx';
 import { Platform, Alert } from 'react-native';
+import * as Print from 'expo-print';
 import Constants from 'expo-constants';
 
 // Verificação para importar apenas quando não estiver no Expo Go
@@ -46,6 +48,24 @@ function sanitizeFileName(fileName: string, fallback: string = 'export.csv'): st
   }
 }
 
+// Helper para download no Web (sem FileSystem/Sharing)
+function downloadCsvWeb(csv: string, fileName: string) {
+  try {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('Falha ao baixar CSV no Web:', e);
+  }
+}
+
 export async function exportSubmissionsToCSV(
   submissions: ReportSubmission[],
   fileName: string = 'relatorios.csv'
@@ -73,11 +93,18 @@ export async function exportSubmissionsToCSV(
   ]);
 
   const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-
+  const csvWithBom = '\uFEFF' + csv; // BOM para compatibilidade com Excel
   const safeName = sanitizeFileName(fileName, 'respostas.csv');
+
+  if (Platform.OS === 'web') {
+    downloadCsvWeb(csvWithBom, safeName);
+    return safeName;
+  }
+
   const dir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory || '';
   const fileUri = `${dir}${safeName}`;
-  await FileSystem.writeAsStringAsync(fileUri, csv as any);
+
+  await FileSystem.writeAsStringAsync(fileUri, csvWithBom as any);
 
   try {
     const available = await Sharing.isAvailableAsync();
@@ -94,15 +121,6 @@ export async function exportSubmissionsToPDF(
   submissions: ReportSubmission[],
   fileName: string = 'relatorios.pdf'
 ): Promise<string> {
-  // Verificar se a biblioteca HTML to PDF está disponível
-  if (!RNHTMLtoPDF) {
-    Alert.alert(
-      "Funcionalidade não disponível",
-      "A exportação para PDF não está disponível no Expo Go. Por favor, use a exportação para Excel ou CSV como alternativa.",
-      [{ text: "OK" }]
-    );
-    throw new Error('Exportação para PDF não disponível no Expo Go');
-  }
 
   // Criar HTML para o PDF
   const tableRows = submissions.map(s => `
@@ -150,22 +168,37 @@ export async function exportSubmissionsToPDF(
   `;
 
   const safeName = sanitizeFileName(fileName, 'respostas.pdf').replace('.csv', '.pdf');
-  
-  try {
-    const options = {
-      html,
-      fileName: safeName.replace('.pdf', ''),
-      directory: 'Documents',
-    };
 
-    const file = await RNHTMLtoPDF.convert(options);
-    const fileUri = file.filePath;
+  try {
+    let fileUri: string = '';
+
+    if (RNHTMLtoPDF) {
+      const options = {
+        html,
+        fileName: safeName.replace('.pdf', ''),
+        directory: 'Documents',
+      };
+      const file = await RNHTMLtoPDF.convert(options);
+      fileUri = file.filePath;
+    } else if (Platform.OS !== 'web') {
+      const { uri } = await Print.printToFileAsync({ html });
+      const dir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory || '';
+      fileUri = `${dir}${safeName}`;
+      await FileSystem.copyAsync({ from: uri, to: fileUri });
+    } else {
+      Alert.alert(
+        'PDF não suportado no navegador',
+        'Use exportação para Excel ou CSV no Web.',
+        [{ text: 'OK' }]
+      );
+      return exportSubmissionsToExcel(submissions, safeName.replace('.pdf', '.xlsx'));
+    }
 
     const available = await Sharing.isAvailableAsync();
     if (available) {
       await Sharing.shareAsync(fileUri, { mimeType: 'application/pdf', dialogTitle: 'Exportar PDF' });
     }
-    
+
     return fileUri;
   } catch (e) {
     console.error('Erro ao gerar PDF:', e);
@@ -177,15 +210,6 @@ export async function exportReportsToPDF(
   reports: Report[],
   fileName: string = 'reports.pdf'
 ): Promise<string> {
-  // Verificar se a biblioteca HTML to PDF está disponível
-  if (!RNHTMLtoPDF) {
-    Alert.alert(
-      "Funcionalidade não disponível",
-      "A exportação para PDF não está disponível no Expo Go. Por favor, use a exportação para Excel ou CSV como alternativa.",
-      [{ text: "OK" }]
-    );
-    throw new Error('Exportação para PDF não disponível no Expo Go');
-  }
 
   // Criar HTML para o PDF
   const tableRows = reports.map(r => `
@@ -233,22 +257,37 @@ export async function exportReportsToPDF(
   `;
 
   const safeName = sanitizeFileName(fileName, 'reports.pdf').replace('.csv', '.pdf');
-  
-  try {
-    const options = {
-      html,
-      fileName: safeName.replace('.pdf', ''),
-      directory: 'Documents',
-    };
 
-    const file = await RNHTMLtoPDF.convert(options);
-    const fileUri = file.filePath;
+  try {
+    let fileUri: string = '';
+
+    if (RNHTMLtoPDF) {
+      const options = {
+        html,
+        fileName: safeName.replace('.pdf', ''),
+        directory: 'Documents',
+      };
+      const file = await RNHTMLtoPDF.convert(options);
+      fileUri = file.filePath;
+    } else if (Platform.OS !== 'web') {
+      const { uri } = await Print.printToFileAsync({ html });
+      const dir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory || '';
+      fileUri = `${dir}${safeName}`;
+      await FileSystem.copyAsync({ from: uri, to: fileUri });
+    } else {
+      Alert.alert(
+        'PDF não suportado no navegador',
+        'Use exportação para Excel ou CSV no Web.',
+        [{ text: 'OK' }]
+      );
+      return exportReportsToExcel(reports, safeName.replace('.pdf', '.xlsx'));
+    }
 
     const available = await Sharing.isAvailableAsync();
     if (available) {
       await Sharing.shareAsync(fileUri, { mimeType: 'application/pdf', dialogTitle: 'Exportar PDF de Relatórios' });
     }
-    
+
     return fileUri;
   } catch (e) {
     console.error('Erro ao gerar PDF:', e);
@@ -359,18 +398,7 @@ export async function exportData<T extends ReportSubmission | Report>(
   // Determinar o tipo de dados (submissions ou reports)
   const isSubmissions = 'reportId' in data[0];
   
-  // Verificar se o formato PDF está disponível quando solicitado
-  if (format === 'pdf' && !RNHTMLtoPDF) {
-    Alert.alert(
-      "Funcionalidade não disponível",
-      "A exportação para PDF não está disponível no Expo Go. Por favor, use a exportação para Excel ou CSV como alternativa.",
-      [{ text: "OK" }]
-    );
-    // Fallback para Excel se PDF não estiver disponível
-    return isSubmissions 
-      ? exportSubmissionsToExcel(data as ReportSubmission[], fileName?.replace('.pdf', '.xlsx'))
-      : exportReportsToExcel(data as Report[], fileName?.replace('.pdf', '.xlsx'));
-  }
+  // PDF agora usa fallback via expo-print quando RNHTMLtoPDF não estiver disponível
   
   switch (format) {
     case 'csv':
@@ -415,12 +443,18 @@ export async function exportReportsToCSV(
   ]);
 
   const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-
+  const csvWithBom = '\uFEFF' + csv; // BOM para compatibilidade com Excel
   const safeName = sanitizeFileName(fileName, 'reports.csv');
+
+  if (Platform.OS === 'web') {
+    downloadCsvWeb(csvWithBom, safeName);
+    return safeName;
+  }
+
   const dir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory || '';
   const fileUri = `${dir}${safeName}`;
   // Omitimos encoding para compatibilidade com tipos do expo-file-system no SDK atual.
-  await FileSystem.writeAsStringAsync(fileUri, csv as any);
+  await FileSystem.writeAsStringAsync(fileUri, csvWithBom as any);
 
   try {
     const available = await Sharing.isAvailableAsync();

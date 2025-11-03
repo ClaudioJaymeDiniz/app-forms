@@ -19,11 +19,116 @@ class DatabaseService {
   async init(): Promise<void> {
     try {
       this.db = await SQLite.openDatabaseAsync("reports.db");
+      // Aplicar migrações antes de criar/garantir tabelas
+      await this.applyMigrations();
       await this.createTables();
       console.log("Database initialized successfully");
     } catch (error) {
       console.error("Error initializing database:", error);
       throw error;
+    }
+  }
+
+  // Migrações de esquema para alinhar valores de status (inglês -> português)
+  private async applyMigrations(): Promise<void> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    try {
+      // Verificar definição atual da tabela reports
+      const reportTableInfo = await this.db.getAllAsync<{ sql: string }>(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='reports'"
+      );
+      const reportCreateSql = reportTableInfo[0]?.sql || "";
+
+      // Se a tabela existir e tiver o CHECK com valores em inglês, migrar para português
+      // Detect older schemas using English status values, even with varied CHECK formats
+      if (
+        reportCreateSql &&
+        /'draft'\s*,\s*'active'\s*,\s*'archived'/i.test(reportCreateSql)
+      ) {
+        await this.db.execAsync(`
+          BEGIN TRANSACTION;
+          CREATE TABLE IF NOT EXISTS reports_new (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            fields TEXT NOT NULL,
+            permissions TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('rascunho', 'ativo', 'arquivado')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects (id),
+            FOREIGN KEY (created_by) REFERENCES users (id)
+          );
+
+          INSERT INTO reports_new (id, project_id, title, description, fields, permissions, status, created_at, updated_at, created_by)
+          SELECT id, project_id, title, description, fields, permissions,
+            CASE status
+              WHEN 'draft' THEN 'rascunho'
+              WHEN 'active' THEN 'ativo'
+              WHEN 'archived' THEN 'arquivado'
+              ELSE status
+            END AS status,
+            created_at, updated_at, created_by
+          FROM reports;
+
+          DROP TABLE reports;
+          ALTER TABLE reports_new RENAME TO reports;
+          COMMIT;
+        `);
+      }
+
+      // Verificar definição atual da tabela report_submissions
+      const submissionsTableInfo = await this.db.getAllAsync<{ sql: string }>(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='report_submissions'"
+      );
+      const submissionsCreateSql = submissionsTableInfo[0]?.sql || "";
+
+      // Migrar submissões se os valores estiverem em inglês
+      if (
+        submissionsCreateSql &&
+        /'draft'\s*,\s*'submitted'\s*,\s*'approved'\s*,\s*'rejected'/i.test(
+          submissionsCreateSql
+        )
+      ) {
+        await this.db.execAsync(`
+          BEGIN TRANSACTION;
+          CREATE TABLE IF NOT EXISTS report_submissions_new (
+            id TEXT PRIMARY KEY,
+            report_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            data TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('rascunho', 'enviado', 'aprovado', 'rejeitado')),
+            submitted_at TEXT,
+            last_modified TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            is_offline INTEGER NOT NULL DEFAULT 0,
+            sync_status TEXT NOT NULL DEFAULT 'synced' CHECK (sync_status IN ('synced', 'pending', 'error')),
+            FOREIGN KEY (report_id) REFERENCES reports (id),
+            FOREIGN KEY (user_id) REFERENCES users (id)
+          );
+
+          INSERT INTO report_submissions_new (id, report_id, user_id, data, status, submitted_at, last_modified, version, is_offline, sync_status)
+          SELECT id, report_id, user_id, data,
+            CASE status
+              WHEN 'draft' THEN 'rascunho'
+              WHEN 'submitted' THEN 'enviado'
+              WHEN 'approved' THEN 'aprovado'
+              WHEN 'rejected' THEN 'rejeitado'
+              ELSE status
+            END AS status,
+            submitted_at, last_modified, version, is_offline, sync_status
+          FROM report_submissions;
+
+          DROP TABLE report_submissions;
+          ALTER TABLE report_submissions_new RENAME TO report_submissions;
+          COMMIT;
+        `);
+      }
+    } catch (error) {
+      console.warn("Schema migration skipped due to error:", error);
     }
   }
 
@@ -61,7 +166,7 @@ class DatabaseService {
         description TEXT,
         fields TEXT NOT NULL, -- JSON string
         permissions TEXT NOT NULL, -- JSON string
-        status TEXT NOT NULL CHECK (status IN ('draft', 'active', 'archived')),
+        status TEXT NOT NULL CHECK (status IN ('rascunho', 'ativo', 'arquivado')),
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         created_by TEXT NOT NULL,
@@ -75,7 +180,7 @@ class DatabaseService {
         report_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
         data TEXT NOT NULL, -- JSON string
-        status TEXT NOT NULL CHECK (status IN ('draft', 'submitted', 'approved', 'rejected')),
+        status TEXT NOT NULL CHECK (status IN ('rascunho', 'enviado', 'aprovado', 'rejeitado')),
         submitted_at TEXT,
         last_modified TEXT NOT NULL,
         version INTEGER NOT NULL DEFAULT 1,
@@ -202,6 +307,23 @@ class DatabaseService {
     };
   }
 
+  async getAllUsers(): Promise<User[]> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    const results = await this.db.getAllAsync<any>(
+      "SELECT * FROM users ORDER BY created_at DESC"
+    );
+
+    return results.map((result) => ({
+      id: result.id,
+      email: result.email,
+      name: result.name,
+      role: result.role,
+      createdAt: result.created_at,
+      updatedAt: result.updated_at,
+    }));
+  }
+
   // Métodos para projetos
   async createProject(project: Omit<Project, "id">): Promise<string> {
     if (!this.db) throw new Error("Database not initialized");
@@ -231,6 +353,24 @@ class DatabaseService {
     const results = await this.db.getAllAsync<any>(
       "SELECT * FROM projects WHERE owner_id = ? ORDER BY created_at DESC",
       [userId]
+    );
+
+    return results.map((result) => ({
+      id: result.id,
+      name: result.name,
+      description: result.description,
+      ownerId: result.owner_id,
+      settings: JSON.parse(result.settings),
+      createdAt: result.created_at,
+      updatedAt: result.updated_at,
+    }));
+  }
+
+  async getAllProjects(): Promise<Project[]> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    const results = await this.db.getAllAsync<any>(
+      "SELECT * FROM projects ORDER BY created_at DESC"
     );
 
     return results.map((result) => ({
@@ -497,6 +637,27 @@ class DatabaseService {
     }));
   }
 
+  async getAllSubmissions(): Promise<ReportSubmission[]> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    const results = await this.db.getAllAsync<any>(
+      "SELECT * FROM report_submissions ORDER BY last_modified DESC"
+    );
+
+    return results.map((result) => ({
+      id: result.id,
+      reportId: result.report_id,
+      userId: result.user_id,
+      data: JSON.parse(result.data),
+      status: result.status,
+      submittedAt: result.submitted_at,
+      lastModified: result.last_modified,
+      version: result.version,
+      isOffline: result.is_offline === 1,
+      syncStatus: result.sync_status,
+    }));
+  }
+
   async getPendingSyncItems(): Promise<SyncQueue[]> {
     if (!this.db) throw new Error("Database not initialized");
 
@@ -514,6 +675,28 @@ class DatabaseService {
       lastAttempt: result.last_attempt,
       error: result.error,
       createdAt: result.created_at,
+    }));
+  }
+
+  // Buscar submissões pendentes de sincronização
+  async getPendingSubmissions(): Promise<ReportSubmission[]> {
+    if (!this.db) throw new Error("Database not initialized");
+
+    const results = await this.db.getAllAsync<any>(
+      "SELECT * FROM report_submissions WHERE sync_status = 'pending' ORDER BY last_modified DESC"
+    );
+
+    return results.map((result) => ({
+      id: result.id,
+      reportId: result.report_id,
+      userId: result.user_id,
+      data: JSON.parse(result.data),
+      status: result.status,
+      submittedAt: result.submitted_at,
+      lastModified: result.last_modified,
+      version: result.version,
+      isOffline: Boolean(result.is_offline),
+      syncStatus: result.sync_status,
     }));
   }
 

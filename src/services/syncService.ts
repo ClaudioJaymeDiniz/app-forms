@@ -1,6 +1,8 @@
 import { databaseService } from '../database/database';
 import { SyncQueue, ReportSubmission } from '../types';
 import NetInfo from '@react-native-community/netinfo';
+import { db } from './firebaseService';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 class SyncService {
   private isOnline: boolean = false;
@@ -92,14 +94,21 @@ class SyncService {
   }
 
   private async syncItem(item: SyncQueue): Promise<void> {
-    // Aqui seria implementada a lógica para sincronizar com o servidor
-    // Por enquanto, vamos simular uma requisição
-    
-    const endpoint = this.getEndpointForItem(item);
-    const method = this.getMethodForAction(item.action);
-    
-    // Simulação de requisição HTTP
-    await this.makeHttpRequest(endpoint, method, item.data);
+    const collectionMap: Record<SyncQueue['type'], string> = {
+      user: 'users',
+      project: 'projects',
+      report: 'reports',
+      submission: 'report_submissions'
+    };
+
+    const col = collectionMap[item.type];
+    const ref = doc(db, col, item.entityId);
+
+    if (item.action === 'delete') {
+      await deleteDoc(ref);
+    } else {
+      await setDoc(ref, item.data, { merge: item.action === 'update' });
+    }
   }
 
   private getEndpointForItem(item: SyncQueue): string {
@@ -132,27 +141,12 @@ class SyncService {
     }
   }
 
-  private async makeHttpRequest(url: string, method: string, data?: any): Promise<any> {
-    // Simulação de requisição HTTP
-    // Em uma implementação real, usaria fetch() ou axios
-    
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        // Simula sucesso na maioria dos casos
-        if (Math.random() > 0.1) {
-          resolve({ success: true });
-        } else {
-          reject(new Error('Network error'));
-        }
-      }, 1000);
-    });
-  }
+  // remove HTTP simulation; Firestore is used directly above
 
   private async syncPendingSubmissions(): Promise<void> {
-    // Busca submissões que estão pendentes de sincronização
-    const submissions = await databaseService.getSubmissionsByUserId('current_user_id'); // TODO: pegar ID do usuário atual
-    const pendingSubmissions = submissions.filter(s => s.syncStatus === 'pending');
-    
+    // Busca submissões que estão pendentes de sincronização diretamente do banco
+    const pendingSubmissions = await databaseService.getPendingSubmissions();
+
     for (const submission of pendingSubmissions) {
       try {
         await this.syncSubmission(submission);
@@ -170,17 +164,15 @@ class SyncService {
   }
 
   private async syncSubmission(submission: ReportSubmission): Promise<void> {
-    const endpoint = `https://api.reportsapp.com/submissions/${submission.id}`;
-    const method = submission.isOffline ? 'POST' : 'PUT';
-    
-    await this.makeHttpRequest(endpoint, method, {
+    const ref = doc(db, 'report_submissions', submission.id);
+    await setDoc(ref, {
       reportId: submission.reportId,
       userId: submission.userId,
       data: submission.data,
       status: submission.status,
       submittedAt: submission.submittedAt,
       version: submission.version
-    });
+    }, { merge: true });
   }
 
   // Método para adicionar item à fila de sincronização
@@ -202,6 +194,31 @@ class SyncService {
     // Se estiver online, tenta sincronizar imediatamente
     if (this.isOnline && !this.syncInProgress) {
       this.startSync();
+    }
+  }
+
+  // Semear todos os dados locais para o Firebase (primeira sincronização)
+  async seedAllToFirebase(): Promise<void> {
+    if (!databaseService.isInitialized()) return;
+
+    const [users, projects, reports, submissions] = await Promise.all([
+      databaseService.getAllUsers(),
+      databaseService.getAllProjects(),
+      databaseService.getAllReports(),
+      databaseService.getAllSubmissions(),
+    ]);
+
+    for (const user of users) {
+      await this.addToSyncQueue('user', 'create', user.id, user);
+    }
+    for (const project of projects) {
+      await this.addToSyncQueue('project', 'create', project.id, project);
+    }
+    for (const report of reports) {
+      await this.addToSyncQueue('report', 'create', report.id, report);
+    }
+    for (const submission of submissions) {
+      await this.addToSyncQueue('submission', 'create', submission.id, submission);
     }
   }
 

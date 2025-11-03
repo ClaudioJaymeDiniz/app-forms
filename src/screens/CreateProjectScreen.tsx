@@ -13,6 +13,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../contexts/AuthContext';
 import { databaseService } from '../database/database';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import { syncService } from '../services/syncService';
 
 type CreateProjectScreenNavigationProp = StackNavigationProp<RootStackParamList, 'CreateProject'>;
 
@@ -41,7 +42,8 @@ const CreateProjectScreen: React.FC = () => {
 
     setLoading(true);
     try {
-      await databaseService.createProject({
+      const now = new Date().toISOString();
+      const projectData = {
         name: name.trim(),
         description: description.trim() || undefined,
         ownerId: state.user.id,
@@ -50,8 +52,16 @@ const CreateProjectScreen: React.FC = () => {
           secondaryColor,
           allowOffline: true
         },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdAt: now,
+        updatedAt: now
+      };
+
+      const projectId = await databaseService.createProject(projectData);
+
+      // Adiciona à fila de sincronização para popular o Firebase
+      await syncService.addToSyncQueue('project', 'create', projectId, {
+        id: projectId,
+        ...projectData,
       });
 
       Alert.alert(

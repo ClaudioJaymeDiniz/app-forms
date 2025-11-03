@@ -186,7 +186,7 @@ const ReportDetailScreen: React.FC = () => {
               mode="contained"
               onPress={navigateToFillReport}
               style={styles.fillButton}
-              icon="edit"
+              icon="pencil"
             >
               Preencher Relatório
             </Button>
@@ -246,7 +246,7 @@ const ReportDetailScreen: React.FC = () => {
                 mode="contained"
                 onPress={() => navigation.navigate('FillReport', { reportId: report.id })}
                 style={styles.actionButton}
-                icon="edit"
+                icon="pencil"
               >
                 Preencher Relatório
               </Button>
@@ -275,7 +275,7 @@ const ReportDetailScreen: React.FC = () => {
           <List.Item
             title="Pode preencher"
             description={`${report.permissions.canFill.length} usuário(s)`}
-            left={props => <List.Icon {...props} icon="edit" />}
+            left={props => <List.Icon {...props} icon="pencil" />}
           />
           <Divider />
           

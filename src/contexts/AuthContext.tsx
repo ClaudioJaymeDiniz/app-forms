@@ -1,5 +1,13 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import * as AuthSession from 'expo-auth-session';
+import * as Facebook from 'expo-auth-session/providers/facebook';
+import Constants from 'expo-constants';
+import { signInWithCredential, GoogleAuthProvider, FacebookAuthProvider } from 'firebase/auth';
+import { auth } from '../services/firebaseService';
+import { syncService } from '../services/syncService';
 import * as SecureStore from 'expo-secure-store';
 import { AuthState, User, LoginCredentials, RegisterData } from '../types';
 import { databaseService } from '../database/database';
@@ -10,7 +18,7 @@ interface AuthContextType {
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   loginWithGoogle: () => Promise<void>;
-  loginWithMicrosoft: () => Promise<void>;
+  loginWithFacebook: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -60,6 +68,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = React.useState(true);
 
   const isWeb = Platform.OS === 'web';
+
+  WebBrowser.maybeCompleteAuthSession();
+
+  const extra = (Constants?.expoConfig?.extra as any) || {};
+  const googleWebClientId = extra?.auth?.googleClientId as string | undefined;
+  const googleAndroidClientId = extra?.auth?.androidClientId as string | undefined;
+  const googleIosClientId = extra?.auth?.iosClientId as string | undefined;
+  const googleExpoClientId = extra?.auth?.expoClientId as string | undefined;
+  const facebookAppId = extra?.auth?.facebookAppId as string | undefined;
+
+  const appOwnership = (Constants as any)?.appOwnership;
+  const isExpoGo = appOwnership === 'expo';
+
+  const redirectUri = AuthSession.makeRedirectUri();
+  const googleClientIdForPlatform = isExpoGo
+    ? (googleExpoClientId || googleWebClientId)
+    : (Platform.OS === 'android'
+        ? googleAndroidClientId
+        : Platform.OS === 'ios'
+          ? googleIosClientId
+          : googleWebClientId);
+
+  const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
+    clientId: googleClientIdForPlatform || 'MISSING_GOOGLE_CLIENT_ID',
+    redirectUri,
+    responseType: 'id_token',
+    scopes: ['openid', 'profile', 'email'],
+  });
+
+  const [fbRequest, fbResponse, fbPromptAsync] = Facebook.useAuthRequest({
+    clientId: facebookAppId || 'MISSING_FACEBOOK_APP_ID',
+    redirectUri,
+  });
 
   const secureGetItem = async (key: string): Promise<string | null> => {
     if (isWeb) {
@@ -112,6 +153,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           type: 'LOGIN_SUCCESS',
           payload: { user, token, refreshToken: refreshToken || '' },
         });
+        // Inicia uma semeadura para garantir que o Firebase não fique em branco
+        try {
+          await syncService.seedAllToFirebase();
+        } catch (e) {
+          console.warn('Seed to Firebase failed:', e);
+        }
       }
     } catch (error) {
       console.error('Error checking auth state:', error);
@@ -128,13 +175,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (!user) {
         // Se não existe, cria um usuário de demonstração
-        const userId = await databaseService.createUser({
+        const now = new Date().toISOString();
+        const userData: Omit<User, 'id'> = {
           email: credentials.email,
           name: credentials.email.split('@')[0],
-          role: 'admin', // Por padrão, primeiro usuário é admin
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
+          role: 'admin' as 'admin', // Por padrão, primeiro usuário é admin
+          createdAt: now,
+          updatedAt: now,
+        };
+        const userId = await databaseService.createUser(userData);
+        // Popula Firebase
+        await syncService.addToSyncQueue('user', 'create', userId, { id: userId, ...userData });
         
         user = await databaseService.getUserById(userId);
       }
@@ -156,6 +207,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         type: 'LOGIN_SUCCESS',
         payload: { user, token, refreshToken },
       });
+
+      // Semeia dados locais para o Firebase após login
+      try {
+        await syncService.seedAllToFirebase();
+      } catch (e) {
+        console.warn('Seed to Firebase failed after login:', e);
+      }
     } catch (error) {
       console.error('Login error:', error);
       throw error;
@@ -174,13 +232,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
 
       // Cria novo usuário
-      const userId = await databaseService.createUser({
+      const now = new Date().toISOString();
+      const userData: Omit<User, 'id'> = {
         email: data.email,
         name: data.name,
-        role: 'user',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+        role: 'user' as 'user',
+        createdAt: now,
+        updatedAt: now,
+      };
+      const userId = await databaseService.createUser(userData);
+      // Popula Firebase
+      await syncService.addToSyncQueue('user', 'create', userId, { id: userId, ...userData });
 
       const user = await databaseService.getUserById(userId);
       if (!user) {
@@ -199,6 +261,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         type: 'LOGIN_SUCCESS',
         payload: { user, token, refreshToken },
       });
+
+      // Semeia dados locais para o Firebase após registro
+      try {
+        await syncService.seedAllToFirebase();
+      } catch (e) {
+        console.warn('Seed to Firebase failed after register:', e);
+      }
     } catch (error) {
       console.error('Register error:', error);
       throw error;
@@ -220,15 +289,69 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const loginWithGoogle = async () => {
-    // TODO: Implementar autenticação com Google
-    // Por enquanto, simula login com Google
-    await login({ email: 'google@example.com', password: 'google' });
+    try {
+      setIsLoading(true);
+      const result = await (googlePromptAsync as any)();
+      const idToken = result?.type === 'success' ? result.authentication?.idToken : undefined;
+      if (idToken) {
+        const credential = GoogleAuthProvider.credential(idToken);
+        const userCred = await signInWithCredential(auth, credential);
+        const user: User = {
+          id: userCred.user.uid,
+          email: userCred.user.email || 'google_user@example.com',
+          name: userCred.user.displayName || 'Google User',
+          role: 'user',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        await secureSetItem('auth_token', (await userCred.user.getIdToken()) || '');
+        await secureSetItem('refresh_token', '');
+        await secureSetItem('user_data', JSON.stringify(user));
+
+        dispatch({ type: 'LOGIN_SUCCESS', payload: { user, token: 'firebase', refreshToken: '' } });
+      } else {
+        throw new Error('Google auth canceled or failed');
+      }
+    } catch (error) {
+      console.error('Google login error:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const loginWithMicrosoft = async () => {
-    // TODO: Implementar autenticação com Microsoft
-    // Por enquanto, simula login com Microsoft
-    await login({ email: 'microsoft@example.com', password: 'microsoft' });
+  const loginWithFacebook = async () => {
+    try {
+      setIsLoading(true);
+      const result = await fbPromptAsync();
+      const accessToken = result?.type === 'success' ? result.authentication?.accessToken : undefined;
+      if (accessToken) {
+        const credential = FacebookAuthProvider.credential(accessToken);
+        const userCred = await signInWithCredential(auth, credential);
+        const user: User = {
+          id: userCred.user.uid,
+          email: userCred.user.email || 'facebook_user@example.com',
+          name: userCred.user.displayName || 'Facebook User',
+          role: 'user',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        await secureSetItem('auth_token', (await userCred.user.getIdToken()) || '');
+        await secureSetItem('refresh_token', '');
+        await secureSetItem('user_data', JSON.stringify(user));
+
+        dispatch({ type: 'LOGIN_SUCCESS', payload: { user, token: 'firebase', refreshToken: '' } });
+      } else {
+        throw new Error('Facebook auth canceled or failed');
+      }
+    } catch (error) {
+      console.error('Facebook login error:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const value: AuthContextType = {
@@ -237,7 +360,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     register,
     logout,
     loginWithGoogle,
-    loginWithMicrosoft,
+    loginWithFacebook,
     isLoading,
   };
 
