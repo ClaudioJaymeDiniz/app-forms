@@ -168,15 +168,24 @@ const ReportResponsesScreen: React.FC = () => {
 
   // Suporte para valores como string (uri) e arrays de arquivos/imagens
   if (typeof value === 'string' || Array.isArray(value)) {
+    type FileEntry = { uri: string; name?: string; mimeType?: string; size?: number };
     const items = Array.isArray(value) ? value : [value];
-    const entries = items
-      .map((v) => typeof v === 'string' ? { uri: v, name: v.split('/').pop(), mimeType: field.type === 'image' ? 'image/*' : undefined } : null)
-      .filter((e): e is { uri: string; name?: string; mimeType?: string } => !!e);
+    const entries: Array<FileEntry | null> = items
+      .map((v) =>
+        typeof v === 'string'
+          ? {
+              uri: v,
+              name: (v.split('/').pop() ?? undefined),
+              mimeType: field.type === 'image' ? 'image/*' : undefined,
+            }
+          : null
+      );
+    const entriesFiltered: FileEntry[] = entries.filter((e): e is FileEntry => !!e);
 
     if (entries.length > 0) {
       return (
         <View style={{ paddingLeft: 8 }}>
-          {entries.map((file, idx) => {
+          {entriesFiltered.map((file, idx) => {
             const isImage = field.type === 'image' || (file.mimeType?.startsWith('image/'));
             if (isImage) {
               return (
