@@ -5,17 +5,8 @@ import { ReportSubmission, Report, ExportOptions } from '../types';
 import * as XLSX from 'xlsx';
 import { Platform, Alert } from 'react-native';
 import * as Print from 'expo-print';
-import Constants from 'expo-constants';
-
-// Verificação para importar apenas quando não estiver no Expo Go
-let RNHTMLtoPDF: any = null;
-try {
-  if (!Constants.appOwnership || Constants.appOwnership !== 'expo') {
-    RNHTMLtoPDF = require('react-native-html-to-pdf').default;
-  }
-} catch (error) {
-  console.log('HTML to PDF não disponível nesta plataforma');
-}
+// Removido suporte a react-native-html-to-pdf para evitar falhas de build;
+// utilizamos expo-print em plataformas nativas e fallback no Web.
 
 function escapeCSV(value: any): string {
   if (value === null || value === undefined) return '';
@@ -172,15 +163,7 @@ export async function exportSubmissionsToPDF(
   try {
     let fileUri: string = '';
 
-    if (RNHTMLtoPDF) {
-      const options = {
-        html,
-        fileName: safeName.replace('.pdf', ''),
-        directory: 'Documents',
-      };
-      const file = await RNHTMLtoPDF.convert(options);
-      fileUri = file.filePath;
-    } else if (Platform.OS !== 'web') {
+    if (Platform.OS !== 'web') {
       const { uri } = await Print.printToFileAsync({ html });
       const dir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory || '';
       fileUri = `${dir}${safeName}`;
@@ -261,15 +244,7 @@ export async function exportReportsToPDF(
   try {
     let fileUri: string = '';
 
-    if (RNHTMLtoPDF) {
-      const options = {
-        html,
-        fileName: safeName.replace('.pdf', ''),
-        directory: 'Documents',
-      };
-      const file = await RNHTMLtoPDF.convert(options);
-      fileUri = file.filePath;
-    } else if (Platform.OS !== 'web') {
+    if (Platform.OS !== 'web') {
       const { uri } = await Print.printToFileAsync({ html });
       const dir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory || '';
       fileUri = `${dir}${safeName}`;
